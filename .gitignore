@@ -3,3 +3,5 @@ node_modules/
 dist/
 build/
 target/
+# Generated invoices
+backend/src/invoices/*.pdf

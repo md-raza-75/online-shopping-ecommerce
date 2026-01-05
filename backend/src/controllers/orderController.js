@@ -1,7 +1,11 @@
 const Order = require('../models/Order');
 const Product = require('../models/Product');
+const User = require('../models/User');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
+const PDFGenerator = require('../services/pdfGenerator');
+const fs = require('fs');
+const path = require('path');
 
 // Initialize Razorpay
 const razorpay = new Razorpay({
@@ -123,6 +127,28 @@ const createOrder = async (req, res) => {
       );
     }
     
+    // Step 6: Generate invoice automatically if payment is COD (immediate)
+    if (paymentMethod === 'COD') {
+      try {
+        const user = await User.findById(req.user._id);
+        const invoiceData = await PDFGenerator.generateInvoice(createdOrder, user);
+        
+        // Update order with invoice info
+        createdOrder.invoice = {
+          invoiceNumber: invoiceData.invoiceNumber,
+          generated: true,
+          pdfPath: invoiceData.pdfPath,
+          generatedAt: new Date()
+        };
+        
+        await createdOrder.save();
+        
+      } catch (invoiceError) {
+        console.error('Invoice generation error:', invoiceError);
+        // Don't fail the order if invoice generation fails
+      }
+    }
+    
     // Prepare response
     const response = {
       success: true,
@@ -151,7 +177,7 @@ const createOrder = async (req, res) => {
   }
 };
 
-// @desc    Verify Razorpay payment
+// @desc    Verify Razorpay payment AND generate invoice
 // @route   POST /api/orders/:id/verify-payment
 // @access  Private
 const verifyPayment = async (req, res) => {
@@ -207,6 +233,22 @@ const verifyPayment = async (req, res) => {
     order.razorpayOrderId = razorpay_order_id;
     order.razorpaySignature = razorpay_signature;
     
+    // ✅ Generate invoice for Razorpay payment
+    try {
+      const user = await User.findById(req.user._id);
+      const invoiceData = await PDFGenerator.generateInvoice(order, user);
+      
+      order.invoice = {
+        invoiceNumber: invoiceData.invoiceNumber,
+        generated: true,
+        pdfPath: invoiceData.pdfPath,
+        generatedAt: new Date()
+      };
+    } catch (invoiceError) {
+      console.error('Invoice generation error in verify payment:', invoiceError);
+      // Continue even if invoice generation fails
+    }
+    
     await order.save();
     
     return res.json({
@@ -224,14 +266,176 @@ const verifyPayment = async (req, res) => {
   }
 };
 
+// @desc    Download invoice - FIXED VERSION
+// @route   GET /api/orders/:id/invoice
+// @access  Private
+const downloadInvoice = async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    const order = await Order.findById(orderId).populate('user', 'name email phone');
+    
+    if (!order) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Order not found' 
+      });
+    }
+    
+    // Check if user has permission
+    const isAdmin = req.user.role === 'admin';
+    const isOrderOwner = order.user._id.toString() === req.user._id.toString();
+    
+    if (!isAdmin && !isOrderOwner) {
+      return res.status(403).json({ 
+        success: false,
+        message: 'Access denied. You can only download your own invoices.' 
+      });
+    }
+    
+    // Check if payment is completed
+    if (order.paymentStatus !== 'completed' && !isAdmin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invoice is available only after payment is completed'
+      });
+    }
+    
+    // Generate invoice if not already generated
+    let pdfPath = order.invoice?.pdfPath;
+    let invoiceNumber = order.invoice?.invoiceNumber;
+    
+    if (!order.invoice?.generated) {
+      try {
+        const invoiceData = await PDFGenerator.generateInvoice(order, order.user);
+        
+        order.invoice = {
+          invoiceNumber: invoiceData.invoiceNumber,
+          generated: true,
+          pdfPath: invoiceData.pdfPath,
+          generatedAt: new Date()
+        };
+        
+        await order.save();
+        pdfPath = invoiceData.pdfPath;
+        invoiceNumber = invoiceData.invoiceNumber;
+      } catch (invoiceError) {
+        console.error('Invoice generation error:', invoiceError);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to generate invoice. Please try again.'
+        });
+      }
+    }
+    
+    // Check if file exists
+    if (!fs.existsSync(pdfPath)) {
+      // Regenerate if file is missing
+      try {
+        console.log('PDF file not found, regenerating...', pdfPath);
+        const invoiceData = await PDFGenerator.generateInvoice(order, order.user);
+        pdfPath = invoiceData.pdfPath;
+        invoiceNumber = invoiceData.invoiceNumber;
+        
+        order.invoice.pdfPath = pdfPath;
+        order.invoice.invoiceNumber = invoiceNumber;
+        await order.save();
+      } catch (regenerateError) {
+        console.error('Invoice regeneration error:', regenerateError);
+        return res.status(500).json({
+          success: false,
+          message: 'Invoice file not found. Please contact support.'
+        });
+      }
+    }
+    
+    // ✅ FIX: Set proper headers for PDF download
+    const fileName = `Invoice-${invoiceNumber || order._id}.pdf`;
+    
+    // Set headers
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Length', fs.statSync(pdfPath).size);
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Pragma', 'no-cache');
+    
+    // Stream the file
+    const fileStream = fs.createReadStream(pdfPath);
+    
+    fileStream.on('error', (error) => {
+      console.error('File stream error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          message: 'Error streaming invoice file'
+        });
+      }
+    });
+    
+    fileStream.pipe(res);
+    
+  } catch (error) {
+    console.error('Download invoice error:', error);
+    
+    // Check if headers already sent
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        success: false,
+        message: 'Server error while downloading invoice' 
+      });
+    }
+  }
+};
+
+// @desc    Get invoice status
+// @route   GET /api/orders/:id/invoice-status
+// @access  Private
+const getInvoiceStatus = async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    const order = await Order.findById(orderId).select('invoice paymentStatus user');
+    
+    if (!order) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Order not found' 
+      });
+    }
+    
+    // Check permissions
+    const isAdmin = req.user.role === 'admin';
+    const isOrderOwner = order.user.toString() === req.user._id.toString();
+    
+    if (!isAdmin && !isOrderOwner) {
+      return res.status(403).json({ 
+        success: false,
+        message: 'Access denied' 
+      });
+    }
+    
+    res.json({
+      success: true,
+      invoice: order.invoice,
+      paymentStatus: order.paymentStatus,
+      canDownload: order.paymentStatus === 'completed' || isAdmin
+    });
+    
+  } catch (error) {
+    console.error('Get invoice status error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: error.message || 'Server error' 
+    });
+  }
+};
+
 // @desc    Get order by ID
 // @route   GET /api/orders/:id
 // @access  Private
 const getOrderById = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id)
-      .populate('user', 'name email')
-      .populate('items.product', 'name image');
+      .populate('user', 'name email phone')
+      .populate('items.product', 'name image category');
     
     if (!order) {
       return res.status(404).json({
@@ -320,7 +524,7 @@ const getOrders = async (req, res) => {
 // @access  Private/Admin
 const updateOrderToPaid = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id);
+    const order = await Order.findById(req.params.id).populate('user', 'name email phone');
     
     if (!order) {
       return res.status(404).json({
@@ -335,6 +539,20 @@ const updateOrderToPaid = async (req, res) => {
     
     if (req.body.paymentId) {
       order.razorpayPaymentId = req.body.paymentId;
+    }
+    
+    // Generate invoice when admin marks as paid
+    try {
+      const invoiceData = await PDFGenerator.generateInvoice(order, order.user);
+      
+      order.invoice = {
+        invoiceNumber: invoiceData.invoiceNumber,
+        generated: true,
+        pdfPath: invoiceData.pdfPath,
+        generatedAt: new Date()
+      };
+    } catch (invoiceError) {
+      console.error('Invoice generation error in admin mark paid:', invoiceError);
     }
     
     const updatedOrder = await order.save();
@@ -422,5 +640,7 @@ module.exports = {
   getMyOrders,
   getOrders,
   updateOrderToPaid,
-  updateOrderStatus
+  updateOrderStatus,
+  downloadInvoice,
+  getInvoiceStatus
 };

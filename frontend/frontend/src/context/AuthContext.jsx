@@ -17,9 +17,18 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     // Check if user is logged in on initial load
-    const userInfo = JSON.parse(localStorage.getItem('userInfo') || 'null');
-    if (userInfo && userInfo.token) {
-      setUser(userInfo);
+    try {
+      const userInfoStr = localStorage.getItem('userInfo');
+      if (userInfoStr && userInfoStr !== 'undefined' && userInfoStr !== 'null') {
+        const userInfo = JSON.parse(userInfoStr);
+        if (userInfo && userInfo.token) {
+          setUser(userInfo);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading user from localStorage:', error);
+      localStorage.removeItem('userInfo');
+      setUser(null);
     }
     setLoading(false);
   }, []);
@@ -41,14 +50,19 @@ export const AuthProvider = ({ children }) => {
   };
 
   const updateUser = (updatedUserData) => {
-    const currentUser = JSON.parse(localStorage.getItem('userInfo') || '{}');
-    const newUserData = { ...currentUser, ...updatedUserData };
-    localStorage.setItem('userInfo', JSON.stringify(newUserData));
-    setUser(newUserData);
+    try {
+      const userInfoStr = localStorage.getItem('userInfo');
+      const currentUser = userInfoStr ? JSON.parse(userInfoStr) : {};
+      const newUserData = { ...currentUser, ...updatedUserData };
+      localStorage.setItem('userInfo', JSON.stringify(newUserData));
+      setUser(newUserData);
+    } catch (error) {
+      console.error('Error updating user:', error);
+    }
   };
 
   const isAuthenticated = () => {
-    return !!user;
+    return !!user && !!user.token;
   };
 
   const isAdmin = () => {

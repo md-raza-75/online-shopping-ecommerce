@@ -11,7 +11,7 @@ const protect = async (req, res, next) => {
       token = req.headers.authorization.split(' ')[1];
 
       // Verify token
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret_key');
 
       // Get user from token (without password)
       req.user = await User.findById(decoded.id).select('-password');
@@ -58,4 +58,24 @@ const protect = async (req, res, next) => {
   }
 };
 
-module.exports = { protect };
+// Admin middleware
+const admin = (req, res, next) => {
+  try {
+    if (req.user && req.user.role === 'admin') {
+      return next();
+    }
+    
+    return res.status(403).json({ 
+      success: false,
+      message: 'Not authorized as admin' 
+    });
+  } catch (error) {
+    console.error('Admin middleware error:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Server error' 
+    });
+  }
+};
+
+module.exports = { protect, admin };

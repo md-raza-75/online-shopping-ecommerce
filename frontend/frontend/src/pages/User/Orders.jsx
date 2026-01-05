@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Table, Button, Badge, Card, Alert, Row, Col, Modal } from 'react-bootstrap';
+import { Container, Table, Button, Badge, Card, Alert, Row, Col, Modal, Spinner } from 'react-bootstrap';
 import { 
   FaShoppingBag, 
   FaEye, 
@@ -9,18 +9,23 @@ import {
   FaCheckCircle,
   FaTimesCircle,
   FaClock,
-  FaBox
+  FaBox,
+  FaDownload,
+  FaFilePdf
 } from 'react-icons/fa';
 import { toast } from 'react-toastify';
-import { getMyOrders } from '../../services/api';
+import { useNavigate } from 'react-router-dom';
+import { getMyOrders, downloadInvoice } from '../../services/api';
 import Loader, { PageLoader } from '../../components/Loader';
 
 const Orders = () => {
+  const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [downloadingId, setDownloadingId] = useState(null);
 
   useEffect(() => {
     fetchOrders();
@@ -73,6 +78,50 @@ const Orders = () => {
     }
   };
 
+  const handleDownloadInvoice = async (orderId, e) => {
+    e.stopPropagation(); // Prevent row click
+    
+    try {
+      setDownloadingId(orderId);
+      
+      const response = await downloadInvoice(orderId);
+      
+      // Create blob from response
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      
+      // Get order for filename
+      const order = orders.find(o => o._id === orderId);
+      const invoiceNumber = order?.invoice?.invoiceNumber || `Invoice-${orderId}`;
+      const fileName = `${invoiceNumber}.pdf`;
+      
+      link.href = url;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      
+      // Clean up
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Invoice downloaded successfully!');
+      
+    } catch (error) {
+      console.error('Download error:', error);
+      
+      if (error.response?.status === 400) {
+        toast.info('Invoice will be available after payment is completed');
+      } else if (error.response?.status === 403) {
+        toast.error('You are not authorized to download this invoice');
+      } else {
+        toast.error('Failed to download invoice');
+      }
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   const viewOrderDetails = (order) => {
     setSelectedOrder(order);
     setShowDetails(true);
@@ -113,7 +162,7 @@ const Orders = () => {
             <p className="text-muted mb-4">
               You haven't placed any orders yet. Start shopping to see your orders here.
             </p>
-            <Button variant="primary" href="/">
+            <Button variant="primary" onClick={() => navigate('/')}>
               Start Shopping
             </Button>
           </Card.Body>
@@ -136,7 +185,7 @@ const Orders = () => {
                 </thead>
                 <tbody>
                   {orders.map((order) => (
-                    <tr key={order._id}>
+                    <tr key={order._id} style={{ cursor: 'pointer' }} onClick={() => viewOrderDetails(order)}>
                       <td className="ps-4">
                         <small className="text-muted">#</small>
                         <strong>{order._id.substring(0, 8)}</strong>
@@ -162,15 +211,34 @@ const Orders = () => {
                       <td>{getStatusBadge(order.orderStatus)}</td>
                       <td>{getPaymentBadge(order.paymentStatus)}</td>
                       <td className="pe-4">
-                        <Button
-                          variant="outline-primary"
-                          size="sm"
-                          onClick={() => viewOrderDetails(order)}
-                          className="d-flex align-items-center gap-1"
-                        >
-                          <FaEye size={12} />
-                          View
-                        </Button>
+                        <div className="btn-group btn-group-sm" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="outline-primary"
+                            size="sm"
+                            onClick={() => viewOrderDetails(order)}
+                            className="d-flex align-items-center gap-1 me-1"
+                            title="View Details"
+                          >
+                            <FaEye size={12} />
+                          </Button>
+                          
+                          {order.paymentStatus === 'completed' && (
+                            <Button
+                              variant="outline-success"
+                              size="sm"
+                              onClick={(e) => handleDownloadInvoice(order._id, e)}
+                              disabled={downloadingId === order._id}
+                              className="d-flex align-items-center gap-1"
+                              title="Download Invoice"
+                            >
+                              {downloadingId === order._id ? (
+                                <Spinner size="sm" animation="border" />
+                              ) : (
+                                <FaDownload size={12} />
+                              )}
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -199,6 +267,12 @@ const Orders = () => {
                     <small className="text-muted d-block">Order Date</small>
                     <strong>{formatDate(selectedOrder.createdAt)}</strong>
                   </div>
+                  {selectedOrder.invoice?.invoiceNumber && (
+                    <div className="mb-3">
+                      <small className="text-muted d-block">Invoice Number</small>
+                      <strong>{selectedOrder.invoice.invoiceNumber}</strong>
+                    </div>
+                  )}
                 </Col>
                 <Col md={6}>
                   <div className="mb-3">
@@ -285,8 +359,17 @@ const Orders = () => {
               <Button variant="outline-secondary" onClick={() => setShowDetails(false)}>
                 Close
               </Button>
-              {selectedOrder.orderStatus === 'delivered' && (
-                <Button variant="primary">
+              {selectedOrder.paymentStatus === 'completed' && (
+                <Button 
+                  variant="primary" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDownloadInvoice(selectedOrder._id, e);
+                    setShowDetails(false);
+                  }}
+                  disabled={downloadingId === selectedOrder._id}
+                >
+                  <FaFilePdf className="me-2" />
                   Download Invoice
                 </Button>
               )}

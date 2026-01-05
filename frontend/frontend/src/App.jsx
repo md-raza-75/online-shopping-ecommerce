@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Container } from 'react-bootstrap';
+import { Container, Button } from 'react-bootstrap'; // ✅ Button import करें
 import { ToastContainer } from 'react-toastify';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-toastify/dist/ReactToastify.css';
@@ -22,6 +22,7 @@ import Register from './pages/Register';
 import ProductDetails from './pages/ProductDetails';
 import Cart from './pages/Cart';
 import Checkout from './pages/Checkout';
+import CheckoutSuccess from './pages/CheckoutSuccess';
 import Profile from './pages/User/Profile';
 import Orders from './pages/User/Orders';
 
@@ -91,6 +92,11 @@ function App() {
                       <Checkout />
                     </ProtectedRoute>
                   } />
+                  <Route path="/order-success/:orderId" element={
+                    <ProtectedRoute>
+                      <CheckoutSuccess />
+                    </ProtectedRoute>
+                  } />
                   <Route path="/profile" element={
                     <ProtectedRoute>
                       <Profile />
@@ -127,9 +133,9 @@ function App() {
                       <p className="lead mb-4">
                         The page you are looking for does not exist.
                       </p>
-                      <a href="/" className="btn btn-primary btn-lg">
+                      <Button variant="primary" href="/">
                         Go Back Home
-                      </a>
+                      </Button>
                     </div>
                   } />
                 </Routes>

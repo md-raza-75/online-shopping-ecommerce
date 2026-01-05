@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Container, Row, Col, Card, Form, Button, Alert, ListGroup, Modal, Badge } from 'react-bootstrap';
+import { Container, Row, Col, Card, Form, Button, Alert, ListGroup, Badge } from 'react-bootstrap';
 import { FaCreditCard, FaMoneyBill, FaLock, FaArrowLeft, FaCheckCircle } from 'react-icons/fa';
 import { toast } from 'react-toastify';
 import { createOrder, getCartFromLocalStorage, clearCartFromLocalStorage } from '../services/api';
@@ -12,13 +12,12 @@ const Checkout = () => {
   const [paymentMethod, setPaymentMethod] = useState('COD');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [orderId, setOrderId] = useState('');
 
   const [shippingAddress, setShippingAddress] = useState({
     address: '',
     city: '',
     postalCode: '',
+    state: '',
     country: 'India'
   });
 
@@ -93,15 +92,15 @@ const Checkout = () => {
       clearCartFromLocalStorage();
       window.dispatchEvent(new Event('cartUpdated'));
       
-      // Save order ID for success modal
-      setOrderId(response.data?._id || `ORD-${Date.now()}`);
-      setShowSuccessModal(true);
+      // ✅ Redirect to success page with order ID
+      navigate(`/order-success/${response.data._id}`);
       
       toast.success('Order placed successfully!');
       
     } catch (err) {
       console.error('Order error:', err);
-      setError(typeof err === 'string' ? err : 'Failed to place order. Please try again.');
+      const errorMessage = err.response?.data?.message || 'Failed to place order. Please try again.';
+      setError(errorMessage);
       toast.error('Order failed!');
     } finally {
       setLoading(false);
@@ -185,12 +184,12 @@ const Checkout = () => {
                 <Form onSubmit={handleAddressSubmit}>
                   {userInfo && (
                     <Alert variant="info" className="mb-4">
-                      Shipping to: <strong>{userInfo.name}</strong> ({userInfo.email})
+                      <strong>Shipping to:</strong> {userInfo.name} ({userInfo.email})
                     </Alert>
                   )}
 
                   <Form.Group className="mb-3" controlId="address">
-                    <Form.Label>Full Address</Form.Label>
+                    <Form.Label>Full Address <span className="text-danger">*</span></Form.Label>
                     <Form.Control
                       as="textarea"
                       rows={3}
@@ -200,12 +199,15 @@ const Checkout = () => {
                       required
                       className="py-2"
                     />
+                    <Form.Text className="text-muted">
+                      Include house number, street, area, landmark
+                    </Form.Text>
                   </Form.Group>
 
                   <Row>
                     <Col md={6}>
                       <Form.Group className="mb-3" controlId="city">
-                        <Form.Label>City</Form.Label>
+                        <Form.Label>City <span className="text-danger">*</span></Form.Label>
                         <Form.Control
                           type="text"
                           placeholder="Enter city"
@@ -218,8 +220,23 @@ const Checkout = () => {
                     </Col>
                     
                     <Col md={6}>
+                      <Form.Group className="mb-3" controlId="state">
+                        <Form.Label>State</Form.Label>
+                        <Form.Control
+                          type="text"
+                          placeholder="Enter state"
+                          value={shippingAddress.state}
+                          onChange={(e) => handleInputChange('state', e.target.value)}
+                          className="py-2"
+                        />
+                      </Form.Group>
+                    </Col>
+                  </Row>
+
+                  <Row>
+                    <Col md={6}>
                       <Form.Group className="mb-3" controlId="postalCode">
-                        <Form.Label>Postal Code</Form.Label>
+                        <Form.Label>Postal Code <span className="text-danger">*</span></Form.Label>
                         <Form.Control
                           type="text"
                           placeholder="Enter postal code"
@@ -230,17 +247,19 @@ const Checkout = () => {
                         />
                       </Form.Group>
                     </Col>
+                    
+                    <Col md={6}>
+                      <Form.Group className="mb-4" controlId="country">
+                        <Form.Label>Country</Form.Label>
+                        <Form.Control
+                          type="text"
+                          value="India"
+                          readOnly
+                          className="py-2 bg-light"
+                        />
+                      </Form.Group>
+                    </Col>
                   </Row>
-
-                  <Form.Group className="mb-4" controlId="country">
-                    <Form.Label>Country</Form.Label>
-                    <Form.Control
-                      type="text"
-                      value="India"
-                      readOnly
-                      className="py-2 bg-light"
-                    />
-                  </Form.Group>
 
                   <div className="d-flex justify-content-between">
                     <Button variant="outline-secondary" onClick={() => navigate('/cart')}>
@@ -276,6 +295,7 @@ const Checkout = () => {
                             <p className="text-muted mb-0 small">
                               Pay when you receive your order
                             </p>
+                            <Badge bg="warning" className="mt-1">Most Popular</Badge>
                           </div>
                         </div>
                       }
@@ -301,6 +321,7 @@ const Checkout = () => {
                             <p className="text-muted mb-0 small">
                               Pay securely with Credit/Debit Card, UPI, NetBanking
                             </p>
+                            <Badge bg="success" className="mt-1">Instant Confirmation</Badge>
                           </div>
                         </div>
                       }
@@ -356,10 +377,10 @@ const Checkout = () => {
                         src={item.image} 
                         alt={item.name}
                         className="rounded me-3"
-                        style={{ width: '50px', height: '50px', objectFit: 'cover' }}
+                        style={{ width: '60px', height: '60px', objectFit: 'cover' }}
                       />
                       <div>
-                        <div className="fw-medium">{item.name}</div>
+                        <div className="fw-medium mb-1">{item.name}</div>
                         <small className="text-muted">Qty: {item.quantity}</small>
                       </div>
                     </div>
@@ -377,7 +398,14 @@ const Checkout = () => {
                 <ListGroup.Item className="d-flex justify-content-between py-2">
                   <div>Shipping</div>
                   <div className={calculateSubtotal() >= 999 ? "text-success fw-bold" : ""}>
-                    {calculateSubtotal() >= 999 ? 'FREE' : '₹100'}
+                    {calculateSubtotal() >= 999 ? (
+                      <>
+                        <span className="text-success">FREE</span>
+                        <Badge bg="success" className="ms-2">Savings: ₹100</Badge>
+                      </>
+                    ) : (
+                      '₹100'
+                    )}
                   </div>
                 </ListGroup.Item>
                 
@@ -392,6 +420,13 @@ const Checkout = () => {
                 </ListGroup.Item>
               </ListGroup>
 
+              {calculateSubtotal() < 999 && (
+                <Alert variant="info" className="small text-center mb-3">
+                  <strong>Free Shipping on orders above ₹999!</strong><br />
+                  Add ₹{(999 - calculateSubtotal()).toFixed(2)} more to save ₹100 on shipping.
+                </Alert>
+              )}
+
               <div className="text-center small">
                 <p className="text-muted">
                   <FaLock className="me-1" />
@@ -401,51 +436,25 @@ const Checkout = () => {
             </Card.Body>
           </Card>
           
-          {/* Need Help */}
+          {/* Order Summary Info */}
           <Card className="shadow-sm border-0 mt-4">
             <Card.Body>
-              <h6 className="mb-3">Need Help?</h6>
-              <p className="small text-muted mb-2">
-                Call us: <strong>1800-123-4567</strong>
-              </p>
-              <p className="small text-muted">
-                Email: <strong>support@shopeasy.com</strong>
-              </p>
+              <h6 className="mb-3">Order Information</h6>
+              <div className="small text-muted">
+                <p className="mb-2">
+                  <strong>Estimated Delivery:</strong> 5-7 business days
+                </p>
+                <p className="mb-2">
+                  <strong>Return Policy:</strong> 7 days easy returns
+                </p>
+                <p className="mb-0">
+                  <strong>Need Help?</strong> Call: 1800-123-4567
+                </p>
+              </div>
             </Card.Body>
           </Card>
         </Col>
       </Row>
-
-      {/* Success Modal */}
-      <Modal show={showSuccessModal} onHide={() => navigate('/orders')} centered>
-        <Modal.Header closeButton className="border-0">
-          <Modal.Title className="text-success">Order Successful!</Modal.Title>
-        </Modal.Header>
-        <Modal.Body className="text-center py-4">
-          <div className="mb-4">
-            <div className="bg-success rounded-circle d-inline-flex align-items-center justify-content-center mb-3"
-                 style={{ width: '80px', height: '80px' }}>
-              <FaCheckCircle size={40} className="text-white" />
-            </div>
-            <h4 className="mb-3">Thank you for your order!</h4>
-            <p className="text-muted mb-4">
-              Your order has been placed successfully. You will receive a confirmation email shortly.
-            </p>
-            <div className="bg-light p-3 rounded mb-4">
-              <p className="mb-1 small text-muted">Order ID</p>
-              <p className="h5 mb-0">{orderId}</p>
-            </div>
-          </div>
-        </Modal.Body>
-        <Modal.Footer className="border-0 justify-content-center">
-          <Button variant="primary" onClick={() => navigate('/orders')} className="px-4">
-            View My Orders
-          </Button>
-          <Button variant="outline-primary" onClick={() => navigate('/')} className="px-4">
-            Continue Shopping
-          </Button>
-        </Modal.Footer>
-      </Modal>
     </Container>
   );
 };

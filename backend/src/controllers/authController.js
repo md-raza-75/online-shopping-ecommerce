@@ -1,9 +1,10 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 
 // Generate JWT Token
 const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
+  return jwt.sign({ id }, process.env.JWT_SECRET || 'your_jwt_secret_key', {
     expiresIn: '30d'
   });
 };
@@ -24,7 +25,7 @@ const registerUser = async (req, res) => {
     }
 
     // Check if user exists
-    const userExists = await User.findOne({ email });
+    const userExists = await User.findOne({ email: email.toLowerCase() });
     if (userExists) {
       return res.status(400).json({
         success: false,

@@ -30,21 +30,47 @@ API.interceptors.request.use(
 API.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    const errorMessage = error.response?.data?.message || 
-                        error.message || 
-                        'Network Error. Please try again.';
+    let errorMessage = 'Network Error. Please try again.';
     
-    // Auto logout on 401
-    if (error.response?.status === 401) {
-      localStorage.removeItem('userInfo');
-      window.location.href = '/login';
+    if (error.response) {
+      // Server responded with error status
+      errorMessage = error.response.data?.message || 
+                    error.response.data?.error || 
+                    `Server Error: ${error.response.status}`;
+      
+      // Auto logout on 401
+      if (error.response.status === 401) {
+        localStorage.removeItem('userInfo');
+        localStorage.removeItem('cartItems');
+        window.dispatchEvent(new Event('userLogout'));
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
+      }
+      
+      // Handle 404 errors
+      if (error.response.status === 404) {
+        errorMessage = 'Resource not found';
+      }
+      
+      // Handle 500 errors
+      if (error.response.status === 500) {
+        errorMessage = 'Internal server error. Please try again later.';
+      }
+    } else if (error.request) {
+      // Request made but no response
+      errorMessage = 'No response from server. Please check your connection.';
+    } else {
+      // Something happened in setting up the request
+      errorMessage = error.message;
     }
     
+    console.error('API Error:', errorMessage);
     return Promise.reject(errorMessage);
   }
 );
 
-// Auth APIs
+// ========== AUTH APIs ==========
 export const login = (email, password) => 
   API.post('/auth/login', { email, password });
 
@@ -57,9 +83,9 @@ export const getProfile = () =>
 export const getUsers = () => 
   API.get('/auth/users');
 
-// Product APIs
-export const getProducts = () => 
-  API.get('/products');
+// ========== PRODUCT APIs ==========
+export const getProducts = (params = {}) => 
+  API.get('/products', { params });
 
 export const getProductById = (id) => 
   API.get(`/products/${id}`);
@@ -73,7 +99,7 @@ export const updateProduct = (id, productData) =>
 export const deleteProduct = (id) => 
   API.delete(`/products/${id}`);
 
-// Order APIs
+// ========== ORDER APIs ==========
 export const createOrder = (orderData) => 
   API.post('/orders', orderData);
 
@@ -92,18 +118,285 @@ export const updateOrderStatus = (id, status) =>
 export const updateOrderToPaid = (id, paymentId) => 
   API.put(`/orders/${id}/pay`, { paymentId });
 
-// Cart helper functions
+export const verifyPayment = (orderId, paymentData) => 
+  API.post(`/orders/${orderId}/verify-payment`, paymentData);
+
+// ========== INVOICE APIs ==========
+export const downloadInvoice = async (orderId) => {
+  try {
+    const user = JSON.parse(localStorage.getItem('userInfo') || '{}');
+    
+    const response = await fetch(`${API_URL}/orders/${orderId}/invoice`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${user.token}`,
+        'Accept': 'application/pdf'
+      }
+    });
+
+    if (!response.ok) {
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch {
+        errorData = { message: `Server error: ${response.status}` };
+      }
+      
+      throw new Error(errorData.message || `Failed to download invoice: ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    
+    // Check if blob is valid
+    if (!blob || blob.size === 0) {
+      throw new Error('Empty PDF received from server');
+    }
+    
+    // Check if it's actually a PDF
+    if (!blob.type.includes('pdf')) {
+      // Might be JSON error instead of PDF
+      const text = await blob.text();
+      try {
+        const errorData = JSON.parse(text);
+        throw new Error(errorData.message || 'Server returned error instead of PDF');
+      } catch {
+        throw new Error('Server returned invalid PDF file');
+      }
+    }
+    
+    return { data: blob };
+    
+  } catch (error) {
+    console.error('Invoice download error:', error);
+    throw error;
+  }
+};
+
+// Alternative method using axios (if fetch doesn't work)
+export const downloadInvoiceAxios = async (orderId) => {
+  try {
+    const response = await API.get(`/orders/${orderId}/invoice`, {
+      responseType: 'blob',
+      headers: {
+        'Accept': 'application/pdf'
+      }
+    });
+    
+    return response;
+  } catch (error) {
+    console.error('Axios invoice download error:', error);
+    throw error;
+  }
+};
+
+export const getInvoiceStatus = (orderId) => 
+  API.get(`/orders/${orderId}/invoice-status`);
+
+// ========== CART Helper Functions ==========
 export const saveCartToLocalStorage = (cartItems) => {
-  localStorage.setItem('cartItems', JSON.stringify(cartItems));
+  try {
+    localStorage.setItem('cartItems', JSON.stringify(cartItems));
+    window.dispatchEvent(new Event('cartUpdated'));
+    return true;
+  } catch (error) {
+    console.error('Error saving cart to localStorage:', error);
+    return false;
+  }
 };
 
 export const getCartFromLocalStorage = () => {
-  const cartItems = localStorage.getItem('cartItems');
-  return cartItems ? JSON.parse(cartItems) : [];
+  try {
+    const cartItems = localStorage.getItem('cartItems');
+    return cartItems ? JSON.parse(cartItems) : [];
+  } catch (error) {
+    console.error('Error loading cart from localStorage:', error);
+    return [];
+  }
 };
 
 export const clearCartFromLocalStorage = () => {
+  try {
+    localStorage.removeItem('cartItems');
+    window.dispatchEvent(new Event('cartUpdated'));
+    return true;
+  } catch (error) {
+    console.error('Error clearing cart from localStorage:', error);
+    return false;
+  }
+};
+
+export const addToCart = (product, quantity = 1) => {
+  try {
+    const cartItems = getCartFromLocalStorage();
+    
+    // Check if product already exists in cart
+    const existingItemIndex = cartItems.findIndex(item => item.product === product._id);
+    
+    if (existingItemIndex > -1) {
+      // Update quantity if exists
+      cartItems[existingItemIndex].quantity += quantity;
+      
+      // Check stock limit
+      if (cartItems[existingItemIndex].quantity > cartItems[existingItemIndex].stock) {
+        cartItems[existingItemIndex].quantity = cartItems[existingItemIndex].stock;
+        throw new Error(`Only ${cartItems[existingItemIndex].stock} items available in stock`);
+      }
+    } else {
+      // Add new item
+      cartItems.push({
+        product: product._id,
+        name: product.name,
+        price: product.price,
+        image: product.image,
+        stock: product.stock,
+        quantity: Math.min(quantity, product.stock)
+      });
+    }
+    
+    saveCartToLocalStorage(cartItems);
+    return cartItems;
+  } catch (error) {
+    console.error('Error adding to cart:', error);
+    throw error;
+  }
+};
+
+export const removeFromCart = (productId) => {
+  try {
+    const cartItems = getCartFromLocalStorage();
+    const updatedCart = cartItems.filter(item => item.product !== productId);
+    saveCartToLocalStorage(updatedCart);
+    return updatedCart;
+  } catch (error) {
+    console.error('Error removing from cart:', error);
+    throw error;
+  }
+};
+
+export const updateCartQuantity = (productId, quantity) => {
+  try {
+    const cartItems = getCartFromLocalStorage();
+    const updatedCart = cartItems.map(item => {
+      if (item.product === productId) {
+        const newQuantity = Math.max(1, Math.min(quantity, item.stock));
+        if (newQuantity > item.stock) {
+          throw new Error(`Only ${item.stock} items available in stock`);
+        }
+        return { ...item, quantity: newQuantity };
+      }
+      return item;
+    });
+    
+    saveCartToLocalStorage(updatedCart);
+    return updatedCart;
+  } catch (error) {
+    console.error('Error updating cart quantity:', error);
+    throw error;
+  }
+};
+
+export const getCartItemCount = () => {
+  try {
+    const cartItems = getCartFromLocalStorage();
+    return cartItems.reduce((total, item) => total + item.quantity, 0);
+  } catch (error) {
+    console.error('Error getting cart item count:', error);
+    return 0;
+  }
+};
+
+export const getCartTotal = () => {
+  try {
+    const cartItems = getCartFromLocalStorage();
+    return cartItems.reduce((total, item) => total + (item.price * item.quantity), 0);
+  } catch (error) {
+    console.error('Error calculating cart total:', error);
+    return 0;
+  }
+};
+
+// ========== Utility Functions ==========
+export const formatCurrency = (amount) => {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2
+  }).format(amount);
+};
+
+export const validateEmail = (email) => {
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return re.test(email);
+};
+
+export const validatePassword = (password) => {
+  return password.length >= 6;
+};
+
+// ========== User Management ==========
+export const triggerUserLogin = () => {
+  window.dispatchEvent(new Event('userLogin'));
+};
+
+export const triggerUserLogout = () => {
+  localStorage.removeItem('userInfo');
   localStorage.removeItem('cartItems');
+  window.dispatchEvent(new Event('userLogout'));
+};
+
+// ========== PDF Download Helper ==========
+export const downloadPDF = (blob, filename) => {
+  try {
+    // Create blob URL
+    const url = window.URL.createObjectURL(blob);
+    
+    // Create download link
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    
+    // Append to body and click
+    document.body.appendChild(link);
+    link.click();
+    
+    // Cleanup
+    setTimeout(() => {
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    }, 100);
+    
+    return true;
+  } catch (error) {
+    console.error('Error downloading PDF:', error);
+    return false;
+  }
+};
+
+// ========== Order Helper ==========
+export const calculateOrderTotal = (items) => {
+  const subtotal = items.reduce((total, item) => total + (item.price * item.quantity), 0);
+  const shipping = subtotal >= 999 ? 0 : 100;
+  const tax = subtotal * 0.18;
+  return {
+    subtotal,
+    shipping,
+    tax,
+    total: subtotal + shipping + tax
+  };
+};
+
+// ========== Debug Functions ==========
+export const debugAPI = () => {
+  const user = JSON.parse(localStorage.getItem('userInfo') || 'null');
+  const cart = getCartFromLocalStorage();
+  
+  console.log('=== API DEBUG INFO ===');
+  console.log('User:', user);
+  console.log('Cart Items:', cart);
+  console.log('Cart Count:', getCartItemCount());
+  console.log('Cart Total:', getCartTotal());
+  console.log('API URL:', API_URL);
+  console.log('=====================');
 };
 
 export default API;

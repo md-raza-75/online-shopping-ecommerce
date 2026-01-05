@@ -27,6 +27,9 @@ app.options('*', cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// ✅ Serve static files (invoices)
+app.use('/invoices', express.static(path.join(__dirname, 'invoices')));
+
 // API Routes
 app.use('/api/auth', require('./src/routes/authRoutes'));
 app.use('/api/products', require('./src/routes/productRoutes'));
@@ -55,7 +58,9 @@ app.get('/', (req, res) => {
         create: 'POST /api/orders (Protected)',
         myOrders: 'GET /api/orders/myorders (Protected)',
         getSingle: 'GET /api/orders/:id (Protected)',
-        getAll: 'GET /api/orders (Admin)'
+        getAll: 'GET /api/orders (Admin)',
+        downloadInvoice: 'GET /api/orders/:id/invoice (Protected)', // ✅ New
+        invoiceStatus: 'GET /api/orders/:id/invoice-status (Protected)' // ✅ New
       }
     },
     timestamp: new Date().toISOString()
@@ -106,6 +111,7 @@ app.listen(PORT, HOST, () => {
   console.log(`🌐 Server URL: http://${HOST}:${PORT}`);
   console.log(`🔌 API Base URL: http://${HOST}:${PORT}/api`);
   console.log(`🗄️  Database: ${process.env.MONGODB_URI}`);
+  console.log(`📄 Invoice Path: ${path.join(__dirname, 'invoices')}`);
   console.log(`⏰ Started at: ${new Date().toLocaleString()}`);
   console.log(`\n✅ Ready to accept requests...\n`);
 });

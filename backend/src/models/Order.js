@@ -49,6 +49,10 @@ const orderSchema = new mongoose.Schema({
       type: String, 
       required: [true, 'Please enter country'],
       default: 'India' 
+    },
+    state: {
+      type: String,
+      default: ''
     }
   },
   paymentMethod: {
@@ -86,6 +90,26 @@ const orderSchema = new mongoose.Schema({
   deliveredAt: {
     type: Date
   },
+  
+  // ✅ New fields for invoice
+  invoice: {
+    invoiceNumber: {
+      type: String,
+      default: ''
+    },
+    generated: {
+      type: Boolean,
+      default: false
+    },
+    pdfPath: {
+      type: String,
+      default: ''
+    },
+    generatedAt: {
+      type: Date
+    }
+  },
+  
   createdAt: {
     type: Date,
     default: Date.now

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Card, Table, Badge, Button } from 'react-bootstrap';
+import { Container, Row, Col, Card, Table, Badge, Button, Spinner } from 'react-bootstrap';
 import { 
   FaUsers, 
   FaShoppingBag, 
@@ -8,10 +8,13 @@ import {
   FaChartLine,
   FaEye,
   FaEdit,
-  FaTrash
+  FaTrash,
+  FaDownload,
+  FaFilePdf
 } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
-import { getAllOrders, getUsers } from '../../services/api';
+import { toast } from 'react-toastify';
+import { getAllOrders, getUsers, downloadInvoice } from '../../services/api';
 import Loader, { PageLoader } from '../../components/Loader';
 
 const AdminDashboard = () => {
@@ -24,6 +27,7 @@ const AdminDashboard = () => {
   const [recentOrders, setRecentOrders] = useState([]);
   const [recentUsers, setRecentUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [downloadingId, setDownloadingId] = useState(null);
 
   useEffect(() => {
     fetchDashboardData();
@@ -52,7 +56,7 @@ const AdminDashboard = () => {
         totalOrders: orders.length,
         totalRevenue: totalRevenue,
         totalUsers: users.length,
-        totalProducts: 24 // Mock data - in real app, fetch products count
+        totalProducts: 24 // Mock data
       });
 
       // Recent orders (last 5)
@@ -77,6 +81,58 @@ const AdminDashboard = () => {
       'cancelled': 'danger'
     };
     return <Badge bg={variants[status] || 'secondary'}>{status}</Badge>;
+  };
+
+  const getPaymentBadge = (status) => {
+    if (status === 'completed') {
+      return <Badge bg="success">Paid</Badge>;
+    } else if (status === 'failed') {
+      return <Badge bg="danger">Failed</Badge>;
+    } else {
+      return <Badge bg="warning">Pending</Badge>;
+    }
+  };
+
+  const handleAdminDownloadInvoice = async (orderId, e) => {
+    e.stopPropagation();
+    
+    try {
+      setDownloadingId(orderId);
+      
+      const response = await downloadInvoice(orderId);
+      
+      // Create blob from response
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      
+      // Get order for filename
+      const order = recentOrders.find(o => o._id === orderId);
+      const invoiceNumber = order?.invoice?.invoiceNumber || `Invoice-${orderId}`;
+      const fileName = `Invoice-${invoiceNumber}.pdf`;
+      
+      link.href = url;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      
+      // Clean up
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Invoice downloaded successfully!');
+      
+    } catch (error) {
+      console.error('Admin download error:', error);
+      
+      if (error.response?.status === 400) {
+        toast.info('Invoice will be available after payment is completed');
+      } else {
+        toast.error('Failed to download invoice');
+      }
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   const formatDate = (dateString) => {
@@ -198,7 +254,8 @@ const AdminDashboard = () => {
                       <th>Date</th>
                       <th>Amount</th>
                       <th>Status</th>
-                      <th>Action</th>
+                      <th>Payment</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -211,17 +268,35 @@ const AdminDashboard = () => {
                         <td>{formatDate(order.createdAt)}</td>
                         <td>₹{order.totalAmount?.toLocaleString()}</td>
                         <td>{getStatusBadge(order.orderStatus)}</td>
+                        <td>{getPaymentBadge(order.paymentStatus)}</td>
                         <td>
-                          <Button
-                            variant="outline-primary"
-                            size="sm"
-                            as={Link}
-                            to={`/admin/orders/${order._id}`}
-                            className="d-flex align-items-center gap-1"
-                          >
-                            <FaEye size={12} />
-                            View
-                          </Button>
+                          <div className="btn-group btn-group-sm">
+                            <Button
+                              variant="outline-primary"
+                              size="sm"
+                              as={Link}
+                              to={`/admin/orders/${order._id}`}
+                              className="d-flex align-items-center gap-1 me-1"
+                              title="View Details"
+                            >
+                              <FaEye size={12} />
+                            </Button>
+                            
+                            <Button
+                              variant="outline-success"
+                              size="sm"
+                              onClick={(e) => handleAdminDownloadInvoice(order._id, e)}
+                              disabled={downloadingId === order._id}
+                              className="d-flex align-items-center gap-1"
+                              title="Download Invoice"
+                            >
+                              {downloadingId === order._id ? (
+                                <Spinner size="sm" animation="border" />
+                              ) : (
+                                <FaDownload size={12} />
+                              )}
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -307,6 +382,10 @@ const AdminDashboard = () => {
                 <Button variant="warning" as={Link} to="/admin/users">
                   <FaUsers className="me-2" />
                   Manage Users
+                </Button>
+                <Button variant="dark" as={Link} to="/admin/reports">
+                  <FaChartLine className="me-2" />
+                  View Reports
                 </Button>
               </div>
             </Card.Body>
