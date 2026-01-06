@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Container, Button } from 'react-bootstrap';
+import { Container, Button } from 'react-bootstrap'; // ✅ Button import
 import { ToastContainer } from 'react-toastify';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-toastify/dist/ReactToastify.css';
@@ -22,7 +22,7 @@ import Register from './pages/Register';
 import ProductDetails from './pages/ProductDetails';
 import Cart from './pages/Cart';
 import Checkout from './pages/Checkout';
-import CheckoutSuccess from './pages/CheckoutSuccess';
+import CheckoutSuccess from './pages/CheckoutSuccess'; // ✅ Correct import
 import Profile from './pages/User/Profile';
 import Orders from './pages/User/Orders';
 
@@ -30,8 +30,8 @@ import Orders from './pages/User/Orders';
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import AddProduct from './pages/Admin/AddProduct';
 import EditProduct from './pages/Admin/EditProduct';
-import ProductList from './pages/Admin/ProductList';
-import AdminOrders from './pages/Admin/AdminOrders';
+import ProductList from './pages/Admin/ProductList'; // ✅ Import ProductList
+import AdminOrders from './pages/Admin/AdminOrders'; // ✅ Import AdminOrders (yeh file banana hoga)
 
 // Protected Route Component
 const ProtectedRoute = ({ children, adminOnly = false }) => {
@@ -94,7 +94,6 @@ function App() {
                       <Checkout />
                     </ProtectedRoute>
                   } />
-                  {/* ✅ FIXED: Correct route name */}
                   <Route path="/order-success/:orderId" element={
                     <ProtectedRoute>
                       <CheckoutSuccess />
@@ -122,7 +121,7 @@ function App() {
                       <ProductList />
                     </ProtectedRoute>
                   } />
-                  <Route path="/admin/orders" element={
+                  <Route path="/admin/orders" element={  // ✅ Add this route
                     <ProtectedRoute adminOnly>
                       <AdminOrders />
                     </ProtectedRoute>
@@ -174,4 +173,4 @@ function App() {
   );
 }
 
-export default App;
+export default App; 
