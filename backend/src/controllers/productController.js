@@ -21,6 +21,46 @@ const getProducts = async (req, res) => {
   }
 };
 
+// @desc    Get all products for admin dashboard
+// @route   GET /api/products/admin/all
+// @access  Private/Admin
+const getAdminProducts = async (req, res) => {
+  try {
+    const pageSize = 20;
+    const page = Number(req.query.page) || 1;
+    const keyword = req.query.keyword 
+      ? {
+          name: {
+            $regex: req.query.keyword,
+            $options: 'i'
+          }
+        } 
+      : {};
+
+    const count = await Product.countDocuments({ ...keyword });
+    const products = await Product.find({ ...keyword })
+      .limit(pageSize)
+      .skip(pageSize * (page - 1))
+      .sort({ createdAt: -1 });
+
+    return res.json({
+      success: true,
+      data: {
+        products,
+        page,
+        pages: Math.ceil(count / pageSize),
+        total: count
+      }
+    });
+  } catch (error) {
+    console.error('Get admin products error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Server error'
+    });
+  }
+};
+
 // @desc    Get single product
 // @route   GET /api/products/:id
 // @access  Public
@@ -164,9 +204,6 @@ const deleteProduct = async (req, res) => {
     product.isActive = false;
     await product.save();
     
-    // Alternatively, hard delete:
-    // await product.deleteOne();
-    
     return res.json({
       success: true,
       message: 'Product deleted successfully'
@@ -190,6 +227,7 @@ const deleteProduct = async (req, res) => {
 
 module.exports = {
   getProducts,
+  getAdminProducts,
   getProductById,
   createProduct,
   updateProduct,

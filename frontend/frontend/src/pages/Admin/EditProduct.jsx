@@ -1,6 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Container, Card, Form, Button, Alert, Row, Col, Modal } from 'react-bootstrap';
+import { 
+  Container, 
+  Card, 
+  Form, 
+  Button, 
+  Alert, 
+  Row, 
+  Col, 
+  Modal,
+  Badge  // Badge add karo yaha
+} from 'react-bootstrap';
 import { FaEdit, FaTrash, FaArrowLeft, FaSave } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-toastify';

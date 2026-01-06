@@ -30,6 +30,7 @@ import Orders from './pages/User/Orders';
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import AddProduct from './pages/Admin/AddProduct';
 import EditProduct from './pages/Admin/EditProduct';
+import ProductList from './pages/Admin/ProductList'; // ✅ Import ProductList
 
 // Protected Route Component
 const ProtectedRoute = ({ children, adminOnly = false }) => {
@@ -112,6 +113,11 @@ function App() {
                   <Route path="/admin" element={
                     <ProtectedRoute adminOnly>
                       <AdminDashboard />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/admin/products" element={  // ✅ Add this route
+                    <ProtectedRoute adminOnly>
+                      <ProductList />
                     </ProtectedRoute>
                   } />
                   <Route path="/admin/add-product" element={

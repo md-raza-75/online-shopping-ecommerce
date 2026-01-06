@@ -83,6 +83,9 @@ export const getProfile = () =>
 export const getUsers = () => 
   API.get('/auth/users');
 
+export const updateProfile = (userData) => 
+  API.put('/auth/profile', userData);
+
 // ========== PRODUCT APIs ==========
 export const getProducts = (params = {}) => 
   API.get('/products', { params });
@@ -98,6 +101,12 @@ export const updateProduct = (id, productData) =>
 
 export const deleteProduct = (id) => 
   API.delete(`/products/${id}`);
+
+// ADMIN PRODUCTS - IMPORTANT: Ye function add karo
+export const getAdminProducts = (page = 1, keyword = '') => 
+  API.get(`/products/admin/all`, { 
+    params: { page, keyword } 
+  });
 
 // ========== ORDER APIs ==========
 export const createOrder = (orderData) => 
@@ -320,7 +329,7 @@ export const formatCurrency = (amount) => {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
-    minimumFractionDigits: 2
+    minimumFractionDigits: 0
   }).format(amount);
 };
 
@@ -399,4 +408,54 @@ export const debugAPI = () => {
   console.log('=====================');
 };
 
-export default API;
+// ========== Export All Functions ==========
+export default {
+  // Auth
+  login,
+  register,
+  getProfile,
+  getUsers,
+  updateProfile,
+  
+  // Products
+  getProducts,
+  getProductById,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  getAdminProducts,
+  
+  // Orders
+  createOrder,
+  getMyOrders,
+  getOrderById,
+  getAllOrders,
+  updateOrderStatus,
+  updateOrderToPaid,
+  verifyPayment,
+  
+  // Invoice
+  downloadInvoice,
+  downloadInvoiceAxios,
+  getInvoiceStatus,
+  
+  // Cart
+  saveCartToLocalStorage,
+  getCartFromLocalStorage,
+  clearCartFromLocalStorage,
+  addToCart,
+  removeFromCart,
+  updateCartQuantity,
+  getCartItemCount,
+  getCartTotal,
+  
+  // Utilities
+  formatCurrency,
+  validateEmail,
+  validatePassword,
+  triggerUserLogin,
+  triggerUserLogout,
+  downloadPDF,
+  calculateOrderTotal,
+  debugAPI
+};

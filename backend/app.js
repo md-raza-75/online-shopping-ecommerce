@@ -26,7 +26,14 @@ app.use('/downloads', express.static(path.join(__dirname, 'downloads')));
 
 // ✅ FIX: Import controllers and create routes properly
 const { registerUser, loginUser, getUserProfile, getUsers } = require('./src/controllers/authController');
-const { getProducts, getProductById, createProduct, updateProduct, deleteProduct } = require('./src/controllers/productController');
+const { 
+  getProducts, 
+  getProductById, 
+  createProduct, 
+  updateProduct, 
+  deleteProduct,
+  getAdminProducts  // ✅ Add this import
+} = require('./src/controllers/productController');
 const { createOrder, getMyOrders, getOrderById, getOrders, updateOrderToPaid, updateOrderStatus, downloadInvoice, getInvoiceStatus, verifyPayment } = require('./src/controllers/orderController');
 const { protect, admin } = require('./src/middleware/authMiddleware');
 
@@ -39,6 +46,7 @@ app.get('/api/auth/users', protect, admin, getUsers);
 // Product Routes
 app.get('/api/products', getProducts);
 app.get('/api/products/:id', getProductById);
+app.get('/api/products/admin/all', protect, admin, getAdminProducts); // ✅ Add this line
 app.post('/api/products', protect, admin, createProduct);
 app.put('/api/products/:id', protect, admin, updateProduct);
 app.delete('/api/products/:id', protect, admin, deleteProduct);
