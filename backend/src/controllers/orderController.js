@@ -18,20 +18,21 @@ const razorpay = new Razorpay({
 // @access  Private
 const createOrder = async (req, res) => {
   try {
-    const { items, shippingAddress, paymentMethod } = req.body;
+    const { items, shippingAddress, paymentMethod, customerNotes } = req.body;
     
     // Validation
     if (!items || items.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'No order items provided'
-      });
+        message: 'No order items provided'});
     }
     
-    if (!shippingAddress || !shippingAddress.address || !shippingAddress.city || !shippingAddress.postalCode) {
+    // Validate shipping address
+    if (!shippingAddress || !shippingAddress.name || !shippingAddress.address || 
+        !shippingAddress.city || !shippingAddress.postalCode || !shippingAddress.phone) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide complete shipping address'
+        message: 'Please provide complete shipping address with phone number'
       });
     }
     
@@ -39,7 +40,7 @@ const createOrder = async (req, res) => {
     const orderItems = [];
     const productUpdates = [];
     
-    // Step 1: Check all products and calculate total
+    // Check all products and calculate total
     for (const item of items) {
       const product = await Product.findById(item.product);
       
@@ -69,7 +70,8 @@ const createOrder = async (req, res) => {
         product: product._id,
         name: product.name,
         quantity: item.quantity,
-        price: product.price
+        price: product.price,
+        image: product.image
       });
       
       totalAmount += product.price * item.quantity;
@@ -77,31 +79,41 @@ const createOrder = async (req, res) => {
       // Prepare stock update
       productUpdates.push({
         productId: product._id,
-        quantity: item.quantity,
-        currentStock: product.stock
+        quantity: item.quantity
       });
     }
     
-    // Step 2: Create order in database
+    // Calculate tax and shipping
+    const taxAmount = totalAmount * 0.18;
+    const shippingAmount = totalAmount > 999 ? 0 : 50;
+    const discountAmount = 0;
+    const grandTotal = totalAmount + taxAmount + shippingAmount - discountAmount;
+    
+    // Create order
     const order = new Order({
       user: req.user._id,
       items: orderItems,
       totalAmount,
+      taxAmount,
+      shippingAmount,
+      discountAmount,
       shippingAddress,
-      paymentMethod: paymentMethod || 'COD'
+      paymentMethod: paymentMethod || 'COD',
+      customerNotes
     });
     
-    // Step 3: If Razorpay payment, create Razorpay order
+    // If Razorpay payment, create Razorpay order
     let razorpayOrder = null;
     if (paymentMethod === 'Razorpay') {
       try {
         razorpayOrder = await razorpay.orders.create({
-          amount: Math.round(totalAmount * 100), // Convert to paise
+          amount: Math.round(grandTotal * 100),
           currency: 'INR',
           receipt: `order_${Date.now()}_${req.user._id}`,
           notes: {
             userId: req.user._id.toString(),
-            orderFor: 'E-commerce Purchase'
+            orderFor: 'E-commerce Purchase',
+            orderId: order._id.toString()
           }
         });
         
@@ -110,30 +122,30 @@ const createOrder = async (req, res) => {
         console.error('Razorpay order creation error:', razorpayError);
         return res.status(500).json({
           success: false,
-          message: 'Payment gateway error',
-          error: razorpayError.message
+          message: 'Payment gateway error'
         });
       }
     }
     
-    // Step 4: Save order
+    // Save order
     const createdOrder = await order.save();
     
-    // Step 5: Reduce stock (after order is saved successfully)
+    // Reduce stock
     for (const update of productUpdates) {
       await Product.findByIdAndUpdate(
         update.productId,
-        { $inc: { stock: -update.quantity } }
+        { $inc: { stock: -update.quantity } },
+        { new: true }
       );
     }
     
-    // Step 6: Generate invoice automatically if payment is COD (immediate)
+    // Generate invoice automatically for COD
     if (paymentMethod === 'COD') {
       try {
+        // ✅ FIX: Get fresh user data for invoice
         const user = await User.findById(req.user._id);
         const invoiceData = await PDFGenerator.generateInvoice(createdOrder, user);
         
-        // Update order with invoice info
         createdOrder.invoice = {
           invoiceNumber: invoiceData.invoiceNumber,
           generated: true,
@@ -142,10 +154,9 @@ const createOrder = async (req, res) => {
         };
         
         await createdOrder.save();
-        
       } catch (invoiceError) {
         console.error('Invoice generation error:', invoiceError);
-        // Don't fail the order if invoice generation fails
+        // Continue even if invoice generation fails
       }
     }
     
@@ -166,18 +177,218 @@ const createOrder = async (req, res) => {
       };
     }
     
-    return res.status(201).json(response);
+    res.status(201).json(response);
     
   } catch (error) {
     console.error('Create order error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: error.message || 'Server error creating order'
     });
   }
 };
 
-// @desc    Verify Razorpay payment AND generate invoice
+// @desc    Download invoice - ✅ FIXED: Use actual user data
+// @route   GET /api/orders/:id/invoice
+// @access  Private
+const downloadInvoice = async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    
+    // Find order
+    const order = await Order.findById(orderId);
+    
+    if (!order) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Order not found' 
+      });
+    }
+    
+    // ✅ CHECK PERMISSIONS
+    const isAdmin = req.user && req.user.role === 'admin';
+    const isOrderOwner = order.user.toString() === req.user._id.toString();
+    
+    if (!isAdmin && !isOrderOwner) {
+      return res.status(403).json({ 
+        success: false,
+        message: 'Access denied. You can only download your own invoices.' 
+      });
+    }
+    
+    // ✅ CHECK PAYMENT STATUS
+    const canDownloadWithoutPayment = isAdmin || order.paymentMethod === 'COD';
+    const paymentCompleted = order.paymentStatus === 'completed';
+    
+    if (!canDownloadWithoutPayment && !paymentCompleted) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invoice will be available after payment is completed'
+      });
+    }
+    
+    // ✅ GET ACTUAL USER DATA (not demo data)
+    let userData;
+    
+    // Try to get user from database
+    const userFromDB = await User.findById(order.user).select('name email phone');
+    
+    if (userFromDB && userFromDB.name && userFromDB.name !== 'Customer Test') {
+      userData = userFromDB;
+      console.log(`✅ Using actual user: ${userData.name}`);
+    } else {
+      // Fallback to request user or shipping address
+      userData = {
+        name: order.shippingAddress?.name || req.user.name || 'Customer',
+        email: req.user.email || 'Not provided',
+        phone: order.shippingAddress?.phone || req.user.phone || 'Not provided'
+      };
+      console.log(`⚠️ Using fallback user: ${userData.name}`);
+    }
+    
+    // ✅ Fix shipping address name if it's demo data
+    if (order.shippingAddress && 
+        (order.shippingAddress.name === 'Customer Test' || 
+         !order.shippingAddress.name || 
+         order.shippingAddress.name.trim() === '')) {
+      order.shippingAddress.name = userData.name;
+    }
+    
+    // ✅ GENERATE INVOICE
+    let pdfPath = order.invoice?.pdfPath;
+    let invoiceNumber = order.invoice?.invoiceNumber;
+    let shouldRegenerate = false;
+    
+    // Check if file exists
+    if (pdfPath && fs.existsSync(pdfPath)) {
+      console.log(`✅ Using existing invoice: ${pdfPath}`);
+    } else {
+      shouldRegenerate = true;
+    }
+    
+    // Generate new invoice if needed
+    if (!order.invoice?.generated || shouldRegenerate) {
+      try {
+        console.log(`📄 Generating invoice for: ${userData.name}`);
+        
+        // ✅ PASS ACTUAL USER DATA
+        const invoiceData = await PDFGenerator.generateInvoice(order, userData);
+        
+        order.invoice = {
+          invoiceNumber: invoiceData.invoiceNumber,
+          generated: true,
+          pdfPath: invoiceData.pdfPath,
+          generatedAt: new Date(),
+          downloadCount: (order.invoice?.downloadCount || 0) + 1
+        };
+        
+        await order.save();
+        pdfPath = invoiceData.pdfPath;
+        invoiceNumber = invoiceData.invoiceNumber;
+        
+        console.log(`✅ Invoice generated for: ${userData.name}`);
+        
+      } catch (invoiceError) {
+        console.error('Invoice generation error:', invoiceError);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to generate invoice'
+        });
+      }
+    } else {
+      // Increment download count
+      order.invoice.downloadCount = (order.invoice.downloadCount || 0) + 1;
+      await order.save();
+    }
+    
+    // Verify file exists
+    if (!fs.existsSync(pdfPath)) {
+      console.error(`❌ Invoice file not found: ${pdfPath}`);
+      return res.status(500).json({
+        success: false,
+        message: 'Invoice file not found on server'
+      });
+    }
+    
+    // Set headers for download
+    const fileName = `ShopEasy-Invoice-${invoiceNumber || order._id}.pdf`;
+    
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Cache-Control', 'no-cache');
+    
+    // Stream the file
+    const fileStream = fs.createReadStream(pdfPath);
+    fileStream.pipe(res);
+    
+    fileStream.on('error', (error) => {
+      console.error('File stream error:', error);
+    });
+    
+  } catch (error) {
+    console.error('Download invoice error:', error);
+    
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        success: false,
+        message: 'Server error while downloading invoice'
+      });
+    }
+  }
+};
+
+// @desc    Get invoice status
+// @route   GET /api/orders/:id/invoice-status
+// @access  Private
+const getInvoiceStatus = async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    const order = await Order.findById(orderId).select('invoice paymentStatus paymentMethod user');
+    
+    if (!order) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Order not found' 
+      });
+    }
+    
+    // Check permissions
+    const isAdmin = req.user.role === 'admin';
+    const isOrderOwner = order.user.toString() === req.user._id.toString();
+    
+    if (!isAdmin && !isOrderOwner) {
+      return res.status(403).json({ 
+        success: false,
+        message: 'Access denied' 
+      });
+    }
+    
+    // Check if can download
+    const canDownload = isAdmin || 
+                       order.paymentStatus === 'completed' || 
+                       order.paymentMethod === 'COD';
+    
+    res.json({
+      success: true,
+      data: {
+        invoice: order.invoice,
+        paymentStatus: order.paymentStatus,
+        paymentMethod: order.paymentMethod,
+        canDownload,
+        isAdmin: isAdmin
+      }
+    });
+    
+  } catch (error) {
+    console.error('Get invoice status error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: error.message || 'Server error' 
+    });
+  }
+};
+
+// @desc    Verify Razorpay payment
 // @route   POST /api/orders/:id/verify-payment
 // @access  Private
 const verifyPayment = async (req, res) => {
@@ -225,6 +436,9 @@ const verifyPayment = async (req, res) => {
       });
     }
     
+    // ✅ GET ACTUAL USER DATA
+    const actualUser = await User.findById(req.user._id).select('name email phone');
+    
     // Update order details
     order.paymentStatus = 'completed';
     order.isPaid = true;
@@ -233,10 +447,9 @@ const verifyPayment = async (req, res) => {
     order.razorpayOrderId = razorpay_order_id;
     order.razorpaySignature = razorpay_signature;
     
-    // ✅ Generate invoice for Razorpay payment
+    // Generate invoice with ACTUAL user data
     try {
-      const user = await User.findById(req.user._id);
-      const invoiceData = await PDFGenerator.generateInvoice(order, user);
+      const invoiceData = await PDFGenerator.generateInvoice(order, actualUser);
       
       order.invoice = {
         invoiceNumber: invoiceData.invoiceNumber,
@@ -245,13 +458,12 @@ const verifyPayment = async (req, res) => {
         generatedAt: new Date()
       };
     } catch (invoiceError) {
-      console.error('Invoice generation error in verify payment:', invoiceError);
-      // Continue even if invoice generation fails
+      console.error('Invoice generation error:', invoiceError);
     }
     
     await order.save();
     
-    return res.json({
+    res.json({
       success: true,
       data: order,
       message: 'Payment verified successfully'
@@ -259,171 +471,9 @@ const verifyPayment = async (req, res) => {
     
   } catch (error) {
     console.error('Verify payment error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: error.message || 'Server error verifying payment'
-    });
-  }
-};
-
-// @desc    Download invoice - FIXED VERSION
-// @route   GET /api/orders/:id/invoice
-// @access  Private
-const downloadInvoice = async (req, res) => {
-  try {
-    const orderId = req.params.id;
-    const order = await Order.findById(orderId).populate('user', 'name email phone');
-    
-    if (!order) {
-      return res.status(404).json({ 
-        success: false,
-        message: 'Order not found' 
-      });
-    }
-    
-    // Check if user has permission
-    const isAdmin = req.user.role === 'admin';
-    const isOrderOwner = order.user._id.toString() === req.user._id.toString();
-    
-    if (!isAdmin && !isOrderOwner) {
-      return res.status(403).json({ 
-        success: false,
-        message: 'Access denied. You can only download your own invoices.' 
-      });
-    }
-    
-    // Check if payment is completed
-    if (order.paymentStatus !== 'completed' && !isAdmin) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invoice is available only after payment is completed'
-      });
-    }
-    
-    // Generate invoice if not already generated
-    let pdfPath = order.invoice?.pdfPath;
-    let invoiceNumber = order.invoice?.invoiceNumber;
-    
-    if (!order.invoice?.generated) {
-      try {
-        const invoiceData = await PDFGenerator.generateInvoice(order, order.user);
-        
-        order.invoice = {
-          invoiceNumber: invoiceData.invoiceNumber,
-          generated: true,
-          pdfPath: invoiceData.pdfPath,
-          generatedAt: new Date()
-        };
-        
-        await order.save();
-        pdfPath = invoiceData.pdfPath;
-        invoiceNumber = invoiceData.invoiceNumber;
-      } catch (invoiceError) {
-        console.error('Invoice generation error:', invoiceError);
-        return res.status(500).json({
-          success: false,
-          message: 'Failed to generate invoice. Please try again.'
-        });
-      }
-    }
-    
-    // Check if file exists
-    if (!fs.existsSync(pdfPath)) {
-      // Regenerate if file is missing
-      try {
-        console.log('PDF file not found, regenerating...', pdfPath);
-        const invoiceData = await PDFGenerator.generateInvoice(order, order.user);
-        pdfPath = invoiceData.pdfPath;
-        invoiceNumber = invoiceData.invoiceNumber;
-        
-        order.invoice.pdfPath = pdfPath;
-        order.invoice.invoiceNumber = invoiceNumber;
-        await order.save();
-      } catch (regenerateError) {
-        console.error('Invoice regeneration error:', regenerateError);
-        return res.status(500).json({
-          success: false,
-          message: 'Invoice file not found. Please contact support.'
-        });
-      }
-    }
-    
-    // ✅ FIX: Set proper headers for PDF download
-    const fileName = `Invoice-${invoiceNumber || order._id}.pdf`;
-    
-    // Set headers
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-    res.setHeader('Content-Length', fs.statSync(pdfPath).size);
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Pragma', 'no-cache');
-    
-    // Stream the file
-    const fileStream = fs.createReadStream(pdfPath);
-    
-    fileStream.on('error', (error) => {
-      console.error('File stream error:', error);
-      if (!res.headersSent) {
-        res.status(500).json({
-          success: false,
-          message: 'Error streaming invoice file'
-        });
-      }
-    });
-    
-    fileStream.pipe(res);
-    
-  } catch (error) {
-    console.error('Download invoice error:', error);
-    
-    // Check if headers already sent
-    if (!res.headersSent) {
-      res.status(500).json({ 
-        success: false,
-        message: 'Server error while downloading invoice' 
-      });
-    }
-  }
-};
-
-// @desc    Get invoice status
-// @route   GET /api/orders/:id/invoice-status
-// @access  Private
-const getInvoiceStatus = async (req, res) => {
-  try {
-    const orderId = req.params.id;
-    const order = await Order.findById(orderId).select('invoice paymentStatus user');
-    
-    if (!order) {
-      return res.status(404).json({ 
-        success: false,
-        message: 'Order not found' 
-      });
-    }
-    
-    // Check permissions
-    const isAdmin = req.user.role === 'admin';
-    const isOrderOwner = order.user.toString() === req.user._id.toString();
-    
-    if (!isAdmin && !isOrderOwner) {
-      return res.status(403).json({ 
-        success: false,
-        message: 'Access denied' 
-      });
-    }
-    
-    res.json({
-      success: true,
-      invoice: order.invoice,
-      paymentStatus: order.paymentStatus,
-      canDownload: order.paymentStatus === 'completed' || isAdmin
-    });
-    
-  } catch (error) {
-    console.error('Get invoice status error:', error);
-    res.status(500).json({ 
-      success: false,
-      message: error.message || 'Server error' 
     });
   }
 };
@@ -435,7 +485,7 @@ const getOrderById = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id)
       .populate('user', 'name email phone')
-      .populate('items.product', 'name image category');
+      .populate('items.product', 'name image category brand');
     
     if (!order) {
       return res.status(404).json({
@@ -452,7 +502,7 @@ const getOrderById = async (req, res) => {
       });
     }
     
-    return res.json({
+    res.json({
       success: true,
       data: order
     });
@@ -466,7 +516,7 @@ const getOrderById = async (req, res) => {
       });
     }
     
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: error.message || 'Server error'
     });
@@ -480,16 +530,25 @@ const getMyOrders = async (req, res) => {
   try {
     const orders = await Order.find({ user: req.user._id })
       .sort({ createdAt: -1 })
-      .populate('items.product', 'name image');
+      .populate('items.product', 'name image')
+      .lean();
     
-    return res.json({
+    // Format orders for frontend
+    const formattedOrders = orders.map(order => ({
+      ...order,
+      orderId: `ORD${order._id.toString().slice(-8).toUpperCase()}`,
+      formattedDate: new Date(order.createdAt).toLocaleDateString('en-IN'),
+      itemCount: order.items.reduce((sum, item) => sum + item.quantity, 0)
+    }));
+    
+    res.json({
       success: true,
       count: orders.length,
-      data: orders
+      data: formattedOrders
     });
   } catch (error) {
     console.error('Get my orders error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: error.message || 'Server error'
     });
@@ -501,30 +560,44 @@ const getMyOrders = async (req, res) => {
 // @access  Private/Admin
 const getOrders = async (req, res) => {
   try {
-    const orders = await Order.find({})
-      .sort({ createdAt: -1 })
-      .populate('user', 'name email');
+    const { page = 1, limit = 20, status, paymentStatus } = req.query;
+    const query = {};
     
-    return res.json({
+    if (status) query.orderStatus = status;
+    if (paymentStatus) query.paymentStatus = paymentStatus;
+    
+    const orders = await Order.find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit * 1)
+      .skip((page - 1) * limit)
+      .populate('user', 'name email')
+      .lean();
+    
+    const total = await Order.countDocuments(query);
+    
+    res.json({
       success: true,
       count: orders.length,
+      total,
+      pages: Math.ceil(total / limit),
+      currentPage: page,
       data: orders
     });
   } catch (error) {
     console.error('Get all orders error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: error.message || 'Server error'
     });
   }
 };
 
-// @desc    Update order to paid
+// @desc    Update order to paid (Admin)
 // @route   PUT /api/orders/:id/pay
 // @access  Private/Admin
 const updateOrderToPaid = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id).populate('user', 'name email phone');
+    const order = await Order.findById(req.params.id);
     
     if (!order) {
       return res.status(404).json({
@@ -532,6 +605,9 @@ const updateOrderToPaid = async (req, res) => {
         message: 'Order not found'
       });
     }
+    
+    // ✅ GET ACTUAL USER DATA
+    const user = await User.findById(order.user).select('name email phone');
     
     order.paymentStatus = 'completed';
     order.isPaid = true;
@@ -541,9 +617,9 @@ const updateOrderToPaid = async (req, res) => {
       order.razorpayPaymentId = req.body.paymentId;
     }
     
-    // Generate invoice when admin marks as paid
+    // Generate invoice with ACTUAL user data
     try {
-      const invoiceData = await PDFGenerator.generateInvoice(order, order.user);
+      const invoiceData = await PDFGenerator.generateInvoice(order, user);
       
       order.invoice = {
         invoiceNumber: invoiceData.invoiceNumber,
@@ -552,12 +628,12 @@ const updateOrderToPaid = async (req, res) => {
         generatedAt: new Date()
       };
     } catch (invoiceError) {
-      console.error('Invoice generation error in admin mark paid:', invoiceError);
+      console.error('Invoice generation error:', invoiceError);
     }
     
     const updatedOrder = await order.save();
     
-    return res.json({
+    res.json({
       success: true,
       data: updatedOrder,
       message: 'Order marked as paid'
@@ -572,19 +648,19 @@ const updateOrderToPaid = async (req, res) => {
       });
     }
     
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: error.message || 'Server error'
     });
   }
 };
 
-// @desc    Update order status
+// @desc    Update order status (Admin)
 // @route   PUT /api/orders/:id/status
 // @access  Private/Admin
 const updateOrderStatus = async (req, res) => {
   try {
-    const { orderStatus } = req.body;
+    const { orderStatus, trackingNumber, courierName, adminNotes } = req.body;
     
     if (!orderStatus) {
       return res.status(400).json({
@@ -604,17 +680,23 @@ const updateOrderStatus = async (req, res) => {
     
     order.orderStatus = orderStatus;
     
+    // Add tracking info if provided
+    if (trackingNumber) order.trackingNumber = trackingNumber;
+    if (courierName) order.courierName = courierName;
+    if (adminNotes) order.adminNotes = adminNotes;
+    
     // If delivered, set delivered date
     if (orderStatus === 'delivered') {
+      order.isDelivered = true;
       order.deliveredAt = Date.now();
     }
     
     const updatedOrder = await order.save();
     
-    return res.json({
+    res.json({
       success: true,
       data: updatedOrder,
-      message: 'Order status updated'
+      message: 'Order status updated successfully'
     });
   } catch (error) {
     console.error('Update order status error:', error);
@@ -626,7 +708,7 @@ const updateOrderStatus = async (req, res) => {
       });
     }
     
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: error.message || 'Server error'
     });
@@ -638,7 +720,7 @@ module.exports = {
   verifyPayment,
   getOrderById,
   getMyOrders,
-  getOrders,
+  getOrders,  
   updateOrderToPaid,
   updateOrderStatus,
   downloadInvoice,

@@ -12,121 +12,95 @@ connectDB();
 
 const app = express();
 
-// CORS configuration
+// Middleware
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:3000'],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+  credentials: true
 }));
-
-// Handle preflight requests
-app.options('*', cors());
-
-// Body parser middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ Serve static files (invoices)
-app.use('/invoices', express.static(path.join(__dirname, 'invoices')));
+// Serve static files
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/downloads', express.static(path.join(__dirname, 'downloads')));
 
-// API Routes
-app.use('/api/auth', require('./src/routes/authRoutes'));
-app.use('/api/products', require('./src/routes/productRoutes'));
-app.use('/api/orders', require('./src/routes/orderRoutes'));
+// ✅ FIX: Import controllers and create routes properly
+const { registerUser, loginUser, getUserProfile, getUsers } = require('./src/controllers/authController');
+const { getProducts, getProductById, createProduct, updateProduct, deleteProduct } = require('./src/controllers/productController');
+const { createOrder, getMyOrders, getOrderById, getOrders, updateOrderToPaid, updateOrderStatus, downloadInvoice, getInvoiceStatus, verifyPayment } = require('./src/controllers/orderController');
+const { protect, admin } = require('./src/middleware/authMiddleware');
+
+// Auth Routes
+app.post('/api/auth/register', registerUser);
+app.post('/api/auth/login', loginUser);
+app.get('/api/auth/profile', protect, getUserProfile);
+app.get('/api/auth/users', protect, admin, getUsers);
+
+// Product Routes
+app.get('/api/products', getProducts);
+app.get('/api/products/:id', getProductById);
+app.post('/api/products', protect, admin, createProduct);
+app.put('/api/products/:id', protect, admin, updateProduct);
+app.delete('/api/products/:id', protect, admin, deleteProduct);
+
+// Order Routes
+app.post('/api/orders', protect, createOrder);
+app.get('/api/orders/myorders', protect, getMyOrders);
+app.get('/api/orders/:id', protect, getOrderById);
+app.post('/api/orders/:id/verify-payment', protect, verifyPayment);
+app.get('/api/orders/:id/invoice', protect, downloadInvoice);
+app.get('/api/orders/:id/invoice-status', protect, getInvoiceStatus);
+app.get('/api/orders', protect, admin, getOrders);
+app.put('/api/orders/:id/pay', protect, admin, updateOrderToPaid);
+app.put('/api/orders/:id/status', protect, admin, updateOrderStatus);
 
 // Welcome route
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: '🎉 E-commerce API is running...',
+    message: '🎉 ShopEasy E-commerce API',
     version: '1.0.0',
-    documentation: {
-      auth: {
-        register: 'POST /api/auth/register',
-        login: 'POST /api/auth/login',
-        profile: 'GET /api/auth/profile (Protected)'
-      },
-      products: {
-        getAll: 'GET /api/products',
-        getSingle: 'GET /api/products/:id',
-        create: 'POST /api/products (Admin)',
-        update: 'PUT /api/products/:id (Admin)',
-        delete: 'DELETE /api/products/:id (Admin)'
-      },
-      orders: {
-        create: 'POST /api/orders (Protected)',
-        myOrders: 'GET /api/orders/myorders (Protected)',
-        getSingle: 'GET /api/orders/:id (Protected)',
-        getAll: 'GET /api/orders (Admin)',
-        downloadInvoice: 'GET /api/orders/:id/invoice (Protected)', // ✅ New
-        invoiceStatus: 'GET /api/orders/:id/invoice-status (Protected)' // ✅ New
-      }
-    },
-    timestamp: new Date().toISOString()
+    endpoints: {
+      auth: '/api/auth',
+      products: '/api/products',
+      orders: '/api/orders'
+    }
   });
 });
 
-// Health check route
+// Health check
 app.get('/api/health', (req, res) => {
   res.json({
     success: true,
     message: 'Server is healthy',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    timestamp: new Date().toISOString()
   });
 });
 
-// 404 handler for undefined routes
+// 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
-    message: `Route ${req.originalUrl} not found`,
-    suggestion: 'Check / for available endpoints'
+    message: 'API endpoint not found'
   });
 });
 
-// Global error handler
+// Error handler
 app.use((err, req, res, next) => {
-  console.error('🚨 Global Error Handler:', err.stack);
-  
-  const statusCode = err.statusCode || 500;
-  const message = err.message || 'Internal Server Error';
-  
-  res.status(statusCode).json({
+  console.error(err.stack);
+  res.status(500).json({
     success: false,
-    message: message,
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    message: 'Something went wrong!',
+    error: process.env.NODE_ENV === 'development' ? err.message : {}
   });
 });
-
-// Server configuration
-const PORT = process.env.PORT || 5000;
-const HOST = process.env.HOST || 'localhost';
 
 // Start server
-app.listen(PORT, HOST, () => {
-  console.log(`\n🚀 Server started successfully!`);
-  console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🌐 Server URL: http://${HOST}:${PORT}`);
-  console.log(`🔌 API Base URL: http://${HOST}:${PORT}/api`);
-  console.log(`🗄️  Database: ${process.env.MONGODB_URI}`);
-  console.log(`📄 Invoice Path: ${path.join(__dirname, 'invoices')}`);
-  console.log(`⏰ Started at: ${new Date().toLocaleString()}`);
-  console.log(`\n✅ Ready to accept requests...\n`);
-});
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-  console.error('⚠️  Unhandled Promise Rejection:', err.message);
-  console.error(err.stack);
-});
-
-// Handle uncaught exceptions
-process.on('uncaughtException', (err) => {
-  console.error('⚠️  Uncaught Exception:', err.message);
-  console.error(err.stack);
-  process.exit(1);
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📚 API: http://localhost:${PORT}`);
+  console.log(`🔄 Mode: ${process.env.NODE_ENV || 'development'}`);
 });
 
 module.exports = app;

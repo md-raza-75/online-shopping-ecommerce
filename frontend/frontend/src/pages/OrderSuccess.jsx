@@ -1,83 +1,111 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Container, Row, Col, Card, Button, Alert, Badge } from 'react-bootstrap';
-import { FaCheckCircle, FaShoppingCart, FaHome, FaPrint, FaDownload, FaRegSmile } from 'react-icons/fa';
+import { Container, Row, Col, Card, Button, Alert, Spinner, Badge } from 'react-bootstrap';
+import { useParams, useNavigate } from 'react-router-dom';
+import { FaCheckCircle, FaDownload, FaShoppingBag, FaHome, FaFilePdf } from 'react-icons/fa';
 import { toast } from 'react-toastify';
-import axios from 'axios';
+import { getOrderById, downloadInvoice } from '../services/api';
 
-const OrderSuccess = () => {
+const CheckoutSuccess = () => {
   const { orderId } = useParams();
   const navigate = useNavigate();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
-    const fetchOrder = async () => {
-      try {
-        const userInfo = JSON.parse(localStorage.getItem('userInfo'));
-        if (!userInfo) {
-          navigate('/login');
-          return;
-        }
+    fetchOrderDetails();
+  }, [orderId]);
 
-        const config = {
-          headers: {
-            Authorization: `Bearer ${userInfo.token}`
-          }
-        };
-
-        const { data } = await axios.get(`/api/orders/${orderId}`, config);
-        setOrder(data.data);
-      } catch (error) {
-        console.error('Error fetching order:', error);
-        toast.error('Failed to load order details');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchOrder();
-  }, [orderId, navigate]);
-
-  const handleDownloadInvoice = async () => {
+  const fetchOrderDetails = async () => {
     try {
-      setDownloadingInvoice(true);
-      const userInfo = JSON.parse(localStorage.getItem('userInfo'));
-      
-      const config = {
-        headers: {
-          Authorization: `Bearer ${userInfo.token}`
-        },
-        responseType: 'blob'
-      };
+      const response = await getOrderById(orderId);
+      setOrder(response.data);
+    } catch (error) {
+      toast.error('Failed to fetch order details');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      const response = await axios.get(`/api/orders/${orderId}/invoice`, config);
+  // ✅ FIXED: Download function
+  const handleDownloadInvoice = async () => {
+    if (!order) return;
+    
+    try {
+      setDownloading(true);
+      
+      // Download invoice
+      const response = await downloadInvoice(orderId);
+      
+      // Create blob
+      const blob = response.data;
+      
+      // Generate filename
+      const invoiceNumber = order.invoice?.invoiceNumber || `Invoice-${order._id}`;
+      const fileName = `ShopEasy-Invoice-${invoiceNumber}.pdf`;
       
       // Create download link
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
+      
       link.href = url;
-      link.setAttribute('download', `Invoice-${orderId}.pdf`);
+      link.download = fileName;
+      link.style.display = 'none';
+      
       document.body.appendChild(link);
       link.click();
-      link.remove();
+      
+      // Cleanup
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }, 100);
       
       toast.success('Invoice downloaded successfully!');
+      
     } catch (error) {
-      console.error('Error downloading invoice:', error);
-      toast.error('Failed to download invoice');
+      console.error('Download error:', error);
+      
+      // Show specific error messages
+      if (error.message.includes('payment is completed')) {
+        toast.info('Invoice will be available after payment is completed');
+      } else if (error.message.includes('Access denied')) {
+        toast.error('You are not authorized to download this invoice');
+      } else if (error.message.includes('Order not found')) {
+        toast.error('Order not found');
+      } else if (error.message.includes('login')) {
+        toast.error('Please login to download invoice');
+        navigate('/login');
+      } else {
+        toast.error(error.message || 'Failed to download invoice');
+      }
     } finally {
-      setDownloadingInvoice(false);
+      setDownloading(false);
     }
+  };
+
+  const getPaymentBadge = (status) => {
+    if (status === 'completed') {
+      return <Badge bg="success">Paid</Badge>;
+    } else if (status === 'failed') {
+      return <Badge bg="danger">Failed</Badge>;
+    } else {
+      return <Badge bg="warning">Pending</Badge>;
+    }
+  };
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
   };
 
   if (loading) {
     return (
-      <Container className="py-5 text-center">
-        <div className="spinner-border text-primary" role="status">
-          <span className="visually-hidden">Loading...</span>
-        </div>
+      <Container className="text-center py-5">
+        <Spinner animation="border" variant="primary" />
         <p className="mt-3">Loading order details...</p>
       </Container>
     );
@@ -88,10 +116,10 @@ const OrderSuccess = () => {
       <Container className="py-5">
         <Alert variant="danger">
           <h4>Order Not Found</h4>
-          <p>The order you're looking for doesn't exist or you don't have permission to view it.</p>
-          <Link to="/orders">
-            <Button variant="primary">View My Orders</Button>
-          </Link>
+          <p>The order you are looking for does not exist.</p>
+          <Button variant="primary" onClick={() => navigate('/')}>
+            Go to Home
+          </Button>
         </Alert>
       </Container>
     );
@@ -100,184 +128,132 @@ const OrderSuccess = () => {
   return (
     <Container className="py-5">
       <Row className="justify-content-center">
-        <Col lg={8}>
-          <Card className="border-0 shadow-sm text-center">
-            <Card.Body className="p-5">
-              {/* Success Icon */}
+        <Col md={10} lg={8}>
+          <Card className="border-success shadow">
+            <Card.Body className="text-center">
               <div className="mb-4">
-                <div className="d-inline-block p-4 rounded-circle bg-success bg-opacity-10">
-                  <FaCheckCircle size={60} className="text-success" />
-                </div>
+                <FaCheckCircle size={80} className="text-success" />
               </div>
-
-              {/* Success Message */}
-              <h1 className="mb-3 fw-bold text-success">Order Confirmed!</h1>
-              <p className="lead mb-4">
-                Thank you for your purchase, {order.user?.name || 'Customer'}! <FaRegSmile />
+              
+              <h2 className="text-success mb-3">Order Confirmed!</h2>
+              <p className="lead">
+                Thank you for your purchase, <strong>{order.user?.name}</strong>!
               </p>
-
-              {/* Order Details */}
-              <div className="border rounded p-4 mb-4 bg-light">
+              
+              <Alert variant="success" className="mt-4 text-start">
+                <Alert.Heading>Order Details</Alert.Heading>
+                <hr />
                 <Row>
-                  <Col md={6} className="mb-3">
-                    <h6>Order ID</h6>
-                    <p className="fw-bold">{order._id}</p>
+                  <Col md={6}>
+                    <p><strong>Order ID:</strong> {order.orderId || order._id}</p>
+                    <p><strong>Order Date:</strong> {formatDate(order.createdAt)}</p>
+                    <p><strong>Total Amount:</strong> ₹{order.totalAmount?.toLocaleString()}</p>
+                    <p><strong>Payment Method:</strong> {order.paymentMethod}</p>
                   </Col>
-                  <Col md={6} className="mb-3">
-                    <h6>Order Date</h6>
-                    <p className="fw-bold">
-                      {new Date(order.createdAt).toLocaleDateString('en-IN', {
-                        day: 'numeric',
-                        month: 'long',
-                        year: 'numeric'
-                      })}
+                  <Col md={6}>
+                    <p><strong>Payment Status:</strong> 
+                      <span className="ms-2">{getPaymentBadge(order.paymentStatus)}</span>
                     </p>
-                  </Col>
-                  <Col md={6} className="mb-3">
-                    <h6>Total Amount</h6>
-                    <p className="h4 fw-bold text-primary">₹{order.totalAmount.toLocaleString()}</p>
-                  </Col>
-                  <Col md={6} className="mb-3">
-                    <h6>Payment Status</h6>
-                    <Badge bg={order.paymentStatus === 'completed' ? 'success' : 'warning'} className="fs-6">
-                      {order.paymentStatus === 'completed' ? 'Paid' : 'Pending'}
-                    </Badge>
-                  </Col>
-                  <Col md={6} className="mb-3">
-                    <h6>Payment Method</h6>
-                    <p className="fw-bold">{order.paymentMethod}</p>
-                  </Col>
-                  <Col md={6} className="mb-3">
-                    <h6>Order Status</h6>
-                    <Badge bg="info" className="fs-6">
-                      {order.orderStatus || 'Processing'}
-                    </Badge>
+                    {order.invoice?.invoiceNumber && (
+                      <p><strong>Invoice No:</strong> {order.invoice.invoiceNumber}</p>
+                    )}
                   </Col>
                 </Row>
-              </div>
-
-              {/* Shipping Address */}
-              <div className="mb-4">
-                <h5 className="mb-3">Shipping Address</h5>
+                <p className="mt-2"><strong>Delivery Address:</strong> {order.shippingAddress.address}, {order.shippingAddress.city} - {order.shippingAddress.postalCode}</p>
+              </Alert>
+              
+              {/* Download Invoice Section */}
+              <Card className="mt-4">
+                <Card.Body>
+                  <h5 className="mb-3">
+                    <FaFilePdf className="me-2 text-danger" />
+                    Download Invoice
+                  </h5>
+                  <p className="text-muted mb-4">
+                    Download your invoice receipt.
+                  </p>
+                  
+                  <Button 
+                    variant="primary" 
+                    size="lg"
+                    onClick={handleDownloadInvoice}
+                    disabled={downloading}
+                    className="w-100 mb-3"
+                  >
+                    {downloading ? (
+                      <>
+                        <Spinner size="sm" animation="border" className="me-2" />
+                        Downloading...
+                      </>
+                    ) : (
+                      <>
+                        <FaDownload className="me-2" />
+                        Download Invoice PDF
+                      </>
+                    )}
+                  </Button>
+                  
+                  <div className="text-start mt-3">
+                    <p className="mb-1 small text-muted">Invoice includes:</p>
+                    <ul className="small text-muted mb-0">
+                      <li>Product details with prices</li>
+                      <li>Tax calculation (18% GST)</li>
+                      <li>Payment method and status</li>
+                      <li>Complete shipping address</li>
+                    </ul>
+                  </div>
+                </Card.Body>
+              </Card>
+              
+              {/* Order Summary */}
+              <div className="mt-5">
+                <h5 className="mb-3">Order Summary:</h5>
                 <Card className="border">
-                  <Card.Body className="text-start">
-                    <p className="mb-1">
-                      <strong>Address:</strong> {order.shippingAddress.address}
-                    </p>
-                    <p className="mb-1">
-                      <strong>City:</strong> {order.shippingAddress.city}
-                    </p>
-                    <p className="mb-1">
-                      <strong>Postal Code:</strong> {order.shippingAddress.postalCode}
-                    </p>
-                    <p className="mb-0">
-                      <strong>Country:</strong> {order.shippingAddress.country || 'India'}
-                    </p>
+                  <Card.Body className="p-0">
+                    <div className="table-responsive">
+                      <table className="table table-borderless mb-0">
+                        <thead className="bg-light">
+                          <tr>
+                            <th>Product</th>
+                            <th className="text-center">Qty</th>
+                            <th className="text-end">Price</th>
+                            <th className="text-end">Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {order.items.map((item, index) => (
+                            <tr key={index}>
+                              <td>{item.name}</td>
+                              <td className="text-center">{item.quantity}</td>
+                              <td className="text-end">₹{item.price.toFixed(2)}</td>
+                              <td className="text-end">₹{(item.price * item.quantity).toFixed(2)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </Card.Body>
                 </Card>
               </div>
-
-              {/* Order Items */}
-              <div className="mb-4">
-                <h5 className="mb-3">Order Items</h5>
-                {order.items && order.items.map((item, index) => (
-                  <Card key={index} className="mb-2 border">
-                    <Card.Body className="py-2">
-                      <Row className="align-items-center">
-                        <Col xs={2}>
-                          {item.image && (
-                            <img 
-                              src={item.image} 
-                              alt={item.name}
-                              className="img-fluid rounded"
-                              style={{ width: '50px', height: '50px', objectFit: 'cover' }}
-                            />
-                          )}
-                        </Col>
-                        <Col xs={5}>
-                          <h6 className="mb-0">{item.name}</h6>
-                          <small className="text-muted">Quantity: {item.quantity}</small>
-                        </Col>
-                        <Col xs={5} className="text-end">
-                          <p className="mb-0 fw-bold">₹{item.price.toLocaleString()}</p>
-                          <small className="text-muted">Total: ₹{(item.price * item.quantity).toLocaleString()}</small>
-                        </Col>
-                      </Row>
-                    </Card.Body>
-                  </Card>
-                ))}
-              </div>
-
-              {/* Next Steps */}
-              <Alert variant="info" className="text-start">
-                <h5>What's Next?</h5>
-                <ul className="mb-0">
-                  <li>You'll receive an order confirmation email shortly</li>
-                  <li>Order will be processed within 24 hours</li>
-                  <li>Shipping updates will be sent to your email</li>
-                  <li>Estimated delivery: 5-7 business days</li>
-                </ul>
-              </Alert>
-
+              
               {/* Action Buttons */}
-              <div className="d-flex flex-wrap justify-content-center gap-3 mt-4">
-                <Link to="/">
-                  <Button variant="outline-primary" className="px-4">
-                    <FaHome className="me-2" />
-                    Continue Shopping
-                  </Button>
-                </Link>
-                
-                <Link to="/orders">
-                  <Button variant="outline-secondary" className="px-4">
-                    <FaShoppingCart className="me-2" />
-                    View All Orders
-                  </Button>
-                </Link>
+              <div className="d-grid gap-2 d-md-flex justify-content-center mt-4">
+                <Button 
+                  variant="outline-primary" 
+                  onClick={() => navigate('/orders')}
+                  className="me-2"
+                >
+                  <FaShoppingBag className="me-2" />
+                  View All Orders
+                </Button>
                 
                 <Button 
-                  variant="success" 
-                  className="px-4"
-                  onClick={handleDownloadInvoice}
-                  disabled={downloadingInvoice || order.paymentStatus !== 'completed'}
+                  variant="primary" 
+                  onClick={() => navigate('/')}
                 >
-                  {downloadingInvoice ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm me-2"></span>
-                      Downloading...
-                    </>
-                  ) : (
-                    <>
-                      <FaDownload className="me-2" />
-                      Download Invoice
-                    </>
-                  )}
+                  <FaHome className="me-2" />
+                  Continue Shopping
                 </Button>
-              </div>
-
-              {/* Help Section */}
-              <div className="mt-5 pt-4 border-top">
-                <h6 className="mb-3">Need Help?</h6>
-                <div className="row">
-                  <div className="col-md-4 mb-3">
-                    <div className="p-3 border rounded">
-                      <h6>📞 Call Us</h6>
-                      <p className="mb-0 small">1800-123-4567</p>
-                    </div>
-                  </div>
-                  <div className="col-md-4 mb-3">
-                    <div className="p-3 border rounded">
-                      <h6>📧 Email</h6>
-                      <p className="mb-0 small">support@shopeasy.com</p>
-                    </div>
-                  </div>
-                  <div className="col-md-4 mb-3">
-                    <div className="p-3 border rounded">
-                      <h6>🕒 Support Hours</h6>
-                      <p className="mb-0 small">Mon-Sat: 9AM-9PM</p>
-                    </div>
-                  </div>
-                </div>
               </div>
             </Card.Body>
           </Card>
@@ -287,4 +263,4 @@ const OrderSuccess = () => {
   );
 };
 
-export default OrderSuccess;
+export default CheckoutSuccess;

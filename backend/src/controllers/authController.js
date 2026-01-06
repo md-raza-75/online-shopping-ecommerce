@@ -1,10 +1,9 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
 
 // Generate JWT Token
 const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET || 'your_jwt_secret_key', {
+  return jwt.sign({ id }, process.env.JWT_SECRET || 'shopeasy_jwt_secret_2023_change_this_in_production', {
     expiresIn: '30d'
   });
 };

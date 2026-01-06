@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Container, Button } from 'react-bootstrap'; // ✅ Button import करें
+import { Container, Button } from 'react-bootstrap'; // ✅ Button import
 import { ToastContainer } from 'react-toastify';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-toastify/dist/ReactToastify.css';
@@ -22,7 +22,7 @@ import Register from './pages/Register';
 import ProductDetails from './pages/ProductDetails';
 import Cart from './pages/Cart';
 import Checkout from './pages/Checkout';
-import CheckoutSuccess from './pages/CheckoutSuccess';
+import CheckoutSuccess from './pages/CheckoutSuccess'; // ✅ Correct import
 import Profile from './pages/User/Profile';
 import Orders from './pages/User/Orders';
 
