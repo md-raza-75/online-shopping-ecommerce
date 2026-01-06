@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Container, Button } from 'react-bootstrap'; // ✅ Button import
+import { Container, Button } from 'react-bootstrap';
 import { ToastContainer } from 'react-toastify';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-toastify/dist/ReactToastify.css';
@@ -22,7 +22,7 @@ import Register from './pages/Register';
 import ProductDetails from './pages/ProductDetails';
 import Cart from './pages/Cart';
 import Checkout from './pages/Checkout';
-import CheckoutSuccess from './pages/CheckoutSuccess'; // ✅ Correct import
+import CheckoutSuccess from './pages/CheckoutSuccess';
 import Profile from './pages/User/Profile';
 import Orders from './pages/User/Orders';
 
@@ -30,7 +30,8 @@ import Orders from './pages/User/Orders';
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import AddProduct from './pages/Admin/AddProduct';
 import EditProduct from './pages/Admin/EditProduct';
-import ProductList from './pages/Admin/ProductList'; // ✅ Import ProductList
+import ProductList from './pages/Admin/ProductList';
+import AdminOrders from './pages/Admin/AdminOrders';
 
 // Protected Route Component
 const ProtectedRoute = ({ children, adminOnly = false }) => {
@@ -93,6 +94,7 @@ function App() {
                       <Checkout />
                     </ProtectedRoute>
                   } />
+                  {/* ✅ FIXED: Correct route name */}
                   <Route path="/order-success/:orderId" element={
                     <ProtectedRoute>
                       <CheckoutSuccess />
@@ -115,9 +117,14 @@ function App() {
                       <AdminDashboard />
                     </ProtectedRoute>
                   } />
-                  <Route path="/admin/products" element={  // ✅ Add this route
+                  <Route path="/admin/products" element={
                     <ProtectedRoute adminOnly>
                       <ProductList />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/admin/orders" element={
+                    <ProtectedRoute adminOnly>
+                      <AdminOrders />
                     </ProtectedRoute>
                   } />
                   <Route path="/admin/add-product" element={

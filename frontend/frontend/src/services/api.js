@@ -70,6 +70,7 @@ API.interceptors.response.use(
   }
 );
 
+
 // ========== AUTH APIs ==========
 export const login = (email, password) => 
   API.post('/auth/login', { email, password });
@@ -120,6 +121,7 @@ export const getOrderById = (id) =>
 
 export const getAllOrders = () => 
   API.get('/orders');
+
 
 export const updateOrderStatus = (id, status) => 
   API.put(`/orders/${id}/status`, { orderStatus: status });

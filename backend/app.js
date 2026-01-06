@@ -24,7 +24,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/downloads', express.static(path.join(__dirname, 'downloads')));
 
-// ✅ FIX: Import controllers and create routes properly
+// ✅ FIX: Import ALL controllers properly
 const { registerUser, loginUser, getUserProfile, getUsers } = require('./src/controllers/authController');
 const { 
   getProducts, 
@@ -32,10 +32,32 @@ const {
   createProduct, 
   updateProduct, 
   deleteProduct,
-  getAdminProducts  // ✅ Add this import
+  getAdminProducts 
 } = require('./src/controllers/productController');
-const { createOrder, getMyOrders, getOrderById, getOrders, updateOrderToPaid, updateOrderStatus, downloadInvoice, getInvoiceStatus, verifyPayment } = require('./src/controllers/orderController');
+const { 
+  createOrder, 
+  getMyOrders, 
+  getOrderById, 
+  getOrders,  // ✅ Ye import hai kya?
+  updateOrderToPaid, 
+  updateOrderStatus,  // ✅ Ye import hai kya?
+  downloadInvoice, 
+  getInvoiceStatus, 
+  verifyPayment 
+} = require('./src/controllers/orderController');
 const { protect, admin } = require('./src/middleware/authMiddleware');
+
+// ✅ FIX: Import routes
+const productRoutes = require('./src/routes/productRoutes');
+// const orderRoutes = require('./src/routes/orderRoutes'); // Agar aapke paas orderRoutes file hai
+
+// ✅ FIX: Use product routes
+app.use('/api/products', productRoutes);
+
+// ✅ FIX: Import check karo
+console.log('Checking imports...');
+console.log('getOrders exists:', typeof getOrders);
+console.log('updateOrderStatus exists:', typeof updateOrderStatus);
 
 // Auth Routes
 app.post('/api/auth/register', registerUser);
@@ -43,24 +65,21 @@ app.post('/api/auth/login', loginUser);
 app.get('/api/auth/profile', protect, getUserProfile);
 app.get('/api/auth/users', protect, admin, getUsers);
 
-// Product Routes
-app.get('/api/products', getProducts);
-app.get('/api/products/:id', getProductById);
-app.get('/api/products/admin/all', protect, admin, getAdminProducts); // ✅ Add this line
-app.post('/api/products', protect, admin, createProduct);
-app.put('/api/products/:id', protect, admin, updateProduct);
-app.delete('/api/products/:id', protect, admin, deleteProduct);
+// Product Routes (via router)
+// Already handled by: app.use('/api/products', productRoutes);
 
-// Order Routes
+// ✅ FIX: Order Routes (DIRECTLY in app.js if missing from routes file)
 app.post('/api/orders', protect, createOrder);
 app.get('/api/orders/myorders', protect, getMyOrders);
 app.get('/api/orders/:id', protect, getOrderById);
 app.post('/api/orders/:id/verify-payment', protect, verifyPayment);
 app.get('/api/orders/:id/invoice', protect, downloadInvoice);
 app.get('/api/orders/:id/invoice-status', protect, getInvoiceStatus);
-app.get('/api/orders', protect, admin, getOrders);
+
+// ✅ CRITICAL FIX: Add these missing routes
+app.get('/api/orders', protect, admin, getOrders);  // Ye line add karo
 app.put('/api/orders/:id/pay', protect, admin, updateOrderToPaid);
-app.put('/api/orders/:id/status', protect, admin, updateOrderStatus);
+app.put('/api/orders/:id/status', protect, admin, updateOrderStatus);  // Ye line add karo
 
 // Welcome route
 app.get('/', (req, res) => {

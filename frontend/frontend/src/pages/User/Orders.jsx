@@ -1,17 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Table, Button, Badge, Card, Alert, Row, Col, Modal, Spinner } from 'react-bootstrap';
 import { 
-  FaShoppingBag, 
-  FaEye, 
-  FaRupeeSign, 
-  FaCalendarAlt, 
-  FaTruck,
-  FaCheckCircle,
-  FaTimesCircle,
-  FaClock,
-  FaBox,
-  FaDownload,
-  FaFilePdf
+  Container, Table, Button, Badge, Card, Alert, 
+  Row, Col, Modal, Spinner, Dropdown 
+} from 'react-bootstrap';
+import { 
+  FaShoppingBag, FaEye, FaRupeeSign, FaCalendarAlt, 
+  FaTruck, FaCheckCircle, FaTimesCircle, FaClock, 
+  FaBox, FaDownload, FaFilePdf, FaEllipsisV, FaPrint 
 } from 'react-icons/fa';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
@@ -35,7 +30,7 @@ const Orders = () => {
     try {
       const userInfo = JSON.parse(localStorage.getItem('userInfo') || 'null');
       if (!userInfo) {
-        window.location.href = '/login';
+        navigate('/login');
         return;
       }
 
@@ -53,33 +48,59 @@ const Orders = () => {
   const getStatusBadge = (status) => {
     const statusConfig = {
       'pending': { variant: 'warning', icon: <FaClock />, text: 'Pending' },
+      'confirmed': { variant: 'info', icon: <FaCheckCircle />, text: 'Confirmed' },
       'processing': { variant: 'info', icon: <FaBox />, text: 'Processing' },
       'shipped': { variant: 'primary', icon: <FaTruck />, text: 'Shipped' },
       'delivered': { variant: 'success', icon: <FaCheckCircle />, text: 'Delivered' },
       'cancelled': { variant: 'danger', icon: <FaTimesCircle />, text: 'Cancelled' }
     };
     
-    const config = statusConfig[status.toLowerCase()] || statusConfig.pending;
+    const config = statusConfig[status?.toLowerCase()] || statusConfig.pending;
     return (
-      <Badge bg={config.variant} className="d-flex align-items-center gap-1">
+      <Badge bg={config.variant} className="d-flex align-items-center gap-1 py-2 px-3">
         {config.icon}
         {config.text}
       </Badge>
     );
   };
 
-  const getPaymentBadge = (status) => {
+  const getPaymentBadge = (status, method, orderStatus) => {
+    // ✅ IMPORTANT FIX: If order is delivered and payment method is COD, show "Paid"
+    if (orderStatus === 'delivered' && method === 'COD') {
+      return <Badge bg="success" className="py-2 px-3">✅ Paid (on Delivery)</Badge>;
+    }
+    
     if (status === 'completed') {
-      return <Badge bg="success">Paid</Badge>;
+      return <Badge bg="success" className="py-2 px-3">✅ Paid</Badge>;
     } else if (status === 'failed') {
-      return <Badge bg="danger">Failed</Badge>;
+      return <Badge bg="danger" className="py-2 px-3">❌ Failed</Badge>;
+    } else if (method === 'COD') {
+      return <Badge bg="info" className="py-2 px-3">💵 Cash on Delivery</Badge>;
     } else {
-      return <Badge bg="warning">Pending</Badge>;
+      return <Badge bg="warning" className="py-2 px-3">⏳ Pending</Badge>;
     }
   };
 
+  // ✅ IMPORTANT FIX: Determine if invoice can be downloaded
+  const canDownloadInvoice = (order) => {
+    // Admin ne paid mark kiya ho
+    if (order.paymentStatus === 'completed') {
+      return true;
+    }
+    // COD order delivered ho (payment auto-completed)
+    if (order.paymentMethod === 'COD' && order.orderStatus === 'delivered') {
+      return true;
+    }
+    // Admin ho (admin sab download kar sakta hai)
+    const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
+    if (userInfo.role === 'admin') {
+      return true;
+    }
+    return false;
+  };
+
   const handleDownloadInvoice = async (orderId, e) => {
-    e.stopPropagation(); // Prevent row click
+    if (e) e.stopPropagation();
     
     try {
       setDownloadingId(orderId);
@@ -87,35 +108,46 @@ const Orders = () => {
       const response = await downloadInvoice(orderId);
       
       // Create blob from response
-      const blob = new Blob([response.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
+      const blob = response.data;
       
       // Get order for filename
       const order = orders.find(o => o._id === orderId);
-      const invoiceNumber = order?.invoice?.invoiceNumber || `Invoice-${orderId}`;
-      const fileName = `${invoiceNumber}.pdf`;
+      const invoiceNumber = order?.invoice?.invoiceNumber || `INV-${orderId.slice(-6)}`;
+      const fileName = `ShopEasy-Invoice-${invoiceNumber}.pdf`;
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
       
       link.href = url;
-      link.setAttribute('download', fileName);
+      link.download = fileName;
+      link.style.display = 'none';
+      
       document.body.appendChild(link);
       link.click();
-      link.remove();
       
-      // Clean up
-      window.URL.revokeObjectURL(url);
+      // Cleanup
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }, 100);
       
-      toast.success('Invoice downloaded successfully!');
+      toast.success('✅ Invoice downloaded successfully!');
       
     } catch (error) {
       console.error('Download error:', error);
       
-      if (error.response?.status === 400) {
-        toast.info('Invoice will be available after payment is completed');
-      } else if (error.response?.status === 403) {
-        toast.error('You are not authorized to download this invoice');
+      if (error.message?.includes('payment is completed') || error.message?.includes('will be available')) {
+        toast.info('📄 Invoice will be available after payment is completed');
+      } else if (error.message?.includes('Access denied')) {
+        toast.error('🔒 You are not authorized to download this invoice');
+      } else if (error.message?.includes('Order not found')) {
+        toast.error('❌ Order not found');
+      } else if (error.message?.includes('login')) {
+        toast.error('🔑 Please login to download invoice');
+        navigate('/login');
       } else {
-        toast.error('Failed to download invoice');
+        toast.error(`❌ ${error.message || 'Failed to download invoice'}`);
       }
     } finally {
       setDownloadingId(null);
@@ -128,6 +160,7 @@ const Orders = () => {
   };
 
   const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
     const date = new Date(dateString);
     return date.toLocaleDateString('en-IN', {
       day: '2-digit',
@@ -136,105 +169,145 @@ const Orders = () => {
     });
   };
 
+  const formatCurrency = (amount) => {
+    if (!amount) return '₹0';
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0
+    }).format(amount);
+  };
+
   if (loading) return <PageLoader />;
 
   return (
     <Container className="py-5">
       <div className="d-flex justify-content-between align-items-center mb-4">
-        <h1 className="h3 fw-bold">
-          <FaShoppingBag className="me-2" />
-          My Orders
-        </h1>
-        <Badge bg="primary" pill>
+        <div>
+          <h1 className="h3 fw-bold">
+            <FaShoppingBag className="me-2" />
+            My Orders
+          </h1>
+          <p className="text-muted mb-0">View and manage all your orders</p>
+        </div>
+        <Badge bg="primary" pill className="fs-6 px-3 py-2">
           {orders.length} {orders.length === 1 ? 'Order' : 'Orders'}
         </Badge>
       </div>
 
       {error ? (
-        <Alert variant="danger">{error}</Alert>
+        <Alert variant="danger">
+          <Alert.Heading>Error Loading Orders</Alert.Heading>
+          <p>{error}</p>
+          <Button variant="outline-danger" onClick={fetchOrders}>
+            Try Again
+          </Button>
+        </Alert>
       ) : orders.length === 0 ? (
         <Card className="text-center py-5 shadow-sm border-0">
           <Card.Body>
             <div className="mb-4">
-              <FaShoppingBag size={64} className="text-muted" />
+              <FaShoppingBag size={80} className="text-muted opacity-50" />
             </div>
             <h4 className="mb-3">No Orders Yet</h4>
             <p className="text-muted mb-4">
               You haven't placed any orders yet. Start shopping to see your orders here.
             </p>
-            <Button variant="primary" onClick={() => navigate('/')}>
+            <Button variant="primary" size="lg" onClick={() => navigate('/')}>
               Start Shopping
             </Button>
           </Card.Body>
         </Card>
       ) : (
-        <Card className="shadow-sm border-0">
+        <Card className="shadow-sm border-0 overflow-hidden">
           <Card.Body className="p-0">
             <div className="table-responsive">
-              <Table hover className="mb-0">
+              <Table hover className="mb-0 align-middle">
                 <thead className="bg-light">
                   <tr>
-                    <th className="ps-4">Order ID</th>
-                    <th>Date</th>
-                    <th>Items</th>
-                    <th>Total</th>
-                    <th>Status</th>
-                    <th>Payment</th>
-                    <th className="pe-4">Actions</th>
+                    <th className="ps-4 py-3">Order ID</th>
+                    <th className="py-3">Date</th>
+                    <th className="py-3">Items</th>
+                    <th className="py-3">Total</th>
+                    <th className="py-3">Status</th>
+                    <th className="py-3">Payment</th>
+                    <th className="pe-4 py-3 text-end">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {orders.map((order) => (
-                    <tr key={order._id} style={{ cursor: 'pointer' }} onClick={() => viewOrderDetails(order)}>
-                      <td className="ps-4">
-                        <small className="text-muted">#</small>
-                        <strong>{order._id.substring(0, 8)}</strong>
+                    <tr 
+                      key={order._id} 
+                      style={{ cursor: 'pointer' }} 
+                      onClick={() => viewOrderDetails(order)}
+                      className="border-bottom"
+                    >
+                      <td className="ps-4 py-3">
+                        <div>
+                          <small className="text-muted d-block">Order</small>
+                          <strong className="text-primary">#{order._id?.slice(-8)?.toUpperCase() || 'N/A'}</strong>
+                        </div>
                       </td>
-                      <td>
+                      <td className="py-3">
                         <div className="d-flex align-items-center">
                           <FaCalendarAlt className="me-2 text-muted" size={14} />
                           {formatDate(order.createdAt)}
                         </div>
                       </td>
-                      <td>
+                      <td className="py-3">
                         <div className="d-flex align-items-center">
                           <FaBox className="me-2 text-muted" size={14} />
-                          {order.items?.length || 0} items
+                          <span className="fw-medium">{order.items?.length || 0} items</span>
                         </div>
                       </td>
-                      <td>
-                        <div className="d-flex align-items-center">
+                      <td className="py-3">
+                        <div className="d-flex align-items-center fw-bold">
                           <FaRupeeSign className="me-1" size={12} />
-                          <strong>{order.totalAmount?.toLocaleString() || '0'}</strong>
+                          {formatCurrency(order.totalAmount)}
                         </div>
                       </td>
-                      <td>{getStatusBadge(order.orderStatus)}</td>
-                      <td>{getPaymentBadge(order.paymentStatus)}</td>
-                      <td className="pe-4">
-                        <div className="btn-group btn-group-sm" onClick={(e) => e.stopPropagation()}>
+                      <td className="py-3">{getStatusBadge(order.orderStatus)}</td>
+                      <td className="py-3">
+                        <div className="d-flex flex-column gap-1">
+                          {getPaymentBadge(order.paymentStatus, order.paymentMethod, order.orderStatus)}
+                          <small className="text-muted">
+                            {order.paymentMethod === 'COD' ? 'Pay on delivery' : 'Online'}
+                          </small>
+                        </div>
+                      </td>
+                      <td className="pe-4 py-3 text-end">
+                        <div className="d-flex justify-content-end gap-2" onClick={(e) => e.stopPropagation()}>
                           <Button
                             variant="outline-primary"
                             size="sm"
                             onClick={() => viewOrderDetails(order)}
-                            className="d-flex align-items-center gap-1 me-1"
+                            className="d-flex align-items-center gap-2"
                             title="View Details"
                           >
                             <FaEye size={12} />
+                            <span className="d-none d-md-inline">View</span>
                           </Button>
                           
-                          {order.paymentStatus === 'completed' && (
+                          {/* ✅ FIXED: Show download button for delivered COD orders OR paid orders */}
+                          {canDownloadInvoice(order) && (
                             <Button
                               variant="outline-success"
                               size="sm"
                               onClick={(e) => handleDownloadInvoice(order._id, e)}
                               disabled={downloadingId === order._id}
-                              className="d-flex align-items-center gap-1"
+                              className="d-flex align-items-center gap-2"
                               title="Download Invoice"
                             >
                               {downloadingId === order._id ? (
-                                <Spinner size="sm" animation="border" />
+                                <>
+                                  <Spinner size="sm" animation="border" />
+                                  <span className="d-none d-md-inline">Downloading...</span>
+                                </>
                               ) : (
-                                <FaDownload size={12} />
+                                <>
+                                  <FaDownload size={12} />
+                                  <span className="d-none d-md-inline">Invoice</span>
+                                </>
                               )}
                             </Button>
                           )}
@@ -250,18 +323,22 @@ const Orders = () => {
       )}
 
       {/* Order Details Modal */}
-      <Modal show={showDetails} onHide={() => setShowDetails(false)} size="lg" centered>
+      <Modal show={showDetails} onHide={() => setShowDetails(false)} size="lg" centered scrollable>
         {selectedOrder && (
           <>
             <Modal.Header closeButton className="border-0 pb-0">
-              <Modal.Title>Order Details</Modal.Title>
+              <Modal.Title className="fw-bold">
+                <FaShoppingBag className="me-2" />
+                Order Details
+              </Modal.Title>
             </Modal.Header>
             <Modal.Body className="pt-0">
+              {/* Order Info */}
               <Row className="mb-4">
                 <Col md={6}>
                   <div className="mb-3">
                     <small className="text-muted d-block">Order ID</small>
-                    <strong>{selectedOrder._id}</strong>
+                    <strong className="text-primary">#{selectedOrder._id?.slice(-8)?.toUpperCase()}</strong>
                   </div>
                   <div className="mb-3">
                     <small className="text-muted d-block">Order Date</small>
@@ -281,17 +358,24 @@ const Orders = () => {
                   </div>
                   <div className="mb-3">
                     <small className="text-muted d-block">Payment Status</small>
-                    <div className="mt-1">{getPaymentBadge(selectedOrder.paymentStatus)}</div>
+                    <div className="mt-1">{getPaymentBadge(selectedOrder.paymentStatus, selectedOrder.paymentMethod, selectedOrder.orderStatus)}</div>
                   </div>
+                  {selectedOrder.deliveredAt && (
+                    <div className="mb-3">
+                      <small className="text-muted d-block">Delivered On</small>
+                      <strong>{formatDate(selectedOrder.deliveredAt)}</strong>
+                    </div>
+                  )}
                 </Col>
               </Row>
 
-              <hr />
+              <hr className="my-4" />
 
-              <h6 className="mb-3">Order Items</h6>
+              {/* Order Items */}
+              <h6 className="mb-3 fw-bold">📦 Order Items</h6>
               <div className="table-responsive mb-4">
-                <Table size="sm">
-                  <thead>
+                <Table size="sm" className="table-hover">
+                  <thead className="bg-light">
                     <tr>
                       <th>Product</th>
                       <th className="text-center">Quantity</th>
@@ -302,75 +386,164 @@ const Orders = () => {
                   <tbody>
                     {selectedOrder.items?.map((item, index) => (
                       <tr key={index}>
-                        <td>{item.name}</td>
-                        <td className="text-center">{item.quantity}</td>
-                        <td className="text-end">₹{item.price.toLocaleString()}</td>
-                        <td className="text-end">₹{(item.price * item.quantity).toLocaleString()}</td>
+                        <td>
+                          <div className="d-flex align-items-center">
+                            {item.image && (
+                              <img 
+                                src={item.image} 
+                                alt={item.name}
+                                style={{ width: '40px', height: '40px', objectFit: 'cover' }}
+                                className="rounded me-2"
+                              />
+                            )}
+                            <span>{item.name}</span>
+                          </div>
+                        </td>
+                        <td className="text-center align-middle">{item.quantity}</td>
+                        <td className="text-end align-middle">{formatCurrency(item.price)}</td>
+                        <td className="text-end align-middle fw-bold">
+                          {formatCurrency(item.price * item.quantity)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </Table>
               </div>
 
+              {/* Order Summary */}
               <Row>
                 <Col md={6}>
-                  <h6 className="mb-3">Shipping Address</h6>
+                  <h6 className="mb-3 fw-bold">🏠 Shipping Address</h6>
                   <Card className="bg-light border-0">
                     <Card.Body className="p-3">
+                      <p className="mb-1 fw-medium">{selectedOrder.shippingAddress?.name}</p>
+                      <p className="mb-1">{selectedOrder.shippingAddress?.address}</p>
                       <p className="mb-1">
-                        <strong>{selectedOrder.shippingAddress?.address}</strong>
-                      </p>
-                      <p className="mb-1">
-                        {selectedOrder.shippingAddress?.city}, {selectedOrder.shippingAddress?.postalCode}
+                        {selectedOrder.shippingAddress?.city}, {selectedOrder.shippingAddress?.state} - {selectedOrder.shippingAddress?.postalCode}
                       </p>
                       <p className="mb-0">{selectedOrder.shippingAddress?.country}</p>
+                      <hr className="my-2" />
+                      <p className="mb-0">
+                        📞 Phone: {selectedOrder.shippingAddress?.phone}
+                      </p>
                     </Card.Body>
                   </Card>
                 </Col>
                 <Col md={6}>
-                  <h6 className="mb-3">Order Summary</h6>
-                  <div className="bg-light p-3 rounded">
-                    <div className="d-flex justify-content-between mb-2">
-                      <span>Subtotal</span>
-                      <span>₹{selectedOrder.totalAmount?.toLocaleString()}</span>
-                    </div>
-                    <div className="d-flex justify-content-between mb-2">
-                      <span>Shipping</span>
-                      <span className={selectedOrder.totalAmount >= 999 ? "text-success" : ""}>
-                        {selectedOrder.totalAmount >= 999 ? 'FREE' : '₹100'}
-                      </span>
-                    </div>
-                    <div className="d-flex justify-content-between mb-2">
-                      <span>Tax (18% GST)</span>
-                      <span>₹{(selectedOrder.totalAmount * 0.18).toFixed(2)}</span>
-                    </div>
-                    <hr className="my-2" />
-                    <div className="d-flex justify-content-between">
-                      <strong>Total</strong>
-                      <strong className="h5 mb-0">
-                        ₹{(selectedOrder.totalAmount + (selectedOrder.totalAmount >= 999 ? 0 : 100) + (selectedOrder.totalAmount * 0.18)).toFixed(2)}
-                      </strong>
-                    </div>
-                  </div>
+                  <h6 className="mb-3 fw-bold">💰 Order Summary</h6>
+                  <Card className="border-0 bg-light">
+                    <Card.Body className="p-3">
+                      <div className="d-flex justify-content-between mb-2">
+                        <span>Subtotal</span>
+                        <span>{formatCurrency(selectedOrder.totalAmount)}</span>
+                      </div>
+                      
+                      {selectedOrder.taxAmount > 0 && (
+                        <div className="d-flex justify-content-between mb-2">
+                          <span>Tax (18% GST)</span>
+                          <span>{formatCurrency(selectedOrder.taxAmount)}</span>
+                        </div>
+                      )}
+                      
+                      <div className="d-flex justify-content-between mb-2">
+                        <span>Shipping</span>
+                        <span className={selectedOrder.shippingAmount === 0 ? "text-success fw-bold" : ""}>
+                          {selectedOrder.shippingAmount === 0 ? 'FREE' : formatCurrency(selectedOrder.shippingAmount)}
+                        </span>
+                      </div>
+                      
+                      {selectedOrder.discountAmount > 0 && (
+                        <div className="d-flex justify-content-between mb-2 text-success">
+                          <span>Discount</span>
+                          <span>-{formatCurrency(selectedOrder.discountAmount)}</span>
+                        </div>
+                      )}
+                      
+                      <hr className="my-2" />
+                      <div className="d-flex justify-content-between align-items-center">
+                        <strong className="fs-5">Total Amount</strong>
+                        <strong className="fs-4 text-primary">
+                          {formatCurrency(
+                            (selectedOrder.totalAmount || 0) + 
+                            (selectedOrder.taxAmount || 0) + 
+                            (selectedOrder.shippingAmount || 0) - 
+                            (selectedOrder.discountAmount || 0)
+                          )}
+                        </strong>
+                      </div>
+                      
+                      <div className="mt-3 small text-muted">
+                        <p className="mb-1">
+                          <strong>Payment Method:</strong> {selectedOrder.paymentMethod}
+                        </p>
+                        <p className="mb-0">
+                          <strong>Payment Status:</strong> {selectedOrder.paymentStatus}
+                          {selectedOrder.orderStatus === 'delivered' && selectedOrder.paymentMethod === 'COD' && ' (Auto-paid on delivery)'}
+                        </p>
+                      </div>
+                    </Card.Body>
+                  </Card>
                 </Col>
               </Row>
+
+              {/* Admin Notes */}
+              {selectedOrder.adminNotes && (
+                <div className="mt-4">
+                  <h6 className="mb-2 fw-bold">📝 Admin Notes</h6>
+                  <Alert variant="info" className="mb-0">
+                    {selectedOrder.adminNotes}
+                  </Alert>
+                </div>
+              )}
+
+              {/* Tracking Info */}
+              {(selectedOrder.trackingNumber || selectedOrder.courierName) && (
+                <div className="mt-4">
+                  <h6 className="mb-2 fw-bold">🚚 Tracking Information</h6>
+                  <Card className="border-0 bg-light">
+                    <Card.Body className="p-3">
+                      {selectedOrder.courierName && (
+                        <p className="mb-1">
+                          <strong>Courier:</strong> {selectedOrder.courierName}
+                        </p>
+                      )}
+                      {selectedOrder.trackingNumber && (
+                        <p className="mb-0">
+                          <strong>Tracking Number:</strong> {selectedOrder.trackingNumber}
+                        </p>
+                      )}
+                    </Card.Body>
+                  </Card>
+                </div>
+              )}
             </Modal.Body>
             <Modal.Footer className="border-0">
               <Button variant="outline-secondary" onClick={() => setShowDetails(false)}>
                 Close
               </Button>
-              {selectedOrder.paymentStatus === 'completed' && (
+              
+              {/* ✅ FIXED: Show download button if invoice can be downloaded */}
+              {canDownloadInvoice(selectedOrder) && (
                 <Button 
                   variant="primary" 
                   onClick={(e) => {
                     e.stopPropagation();
                     handleDownloadInvoice(selectedOrder._id, e);
-                    setShowDetails(false);
                   }}
                   disabled={downloadingId === selectedOrder._id}
+                  className="d-flex align-items-center gap-2"
                 >
-                  <FaFilePdf className="me-2" />
-                  Download Invoice
+                  {downloadingId === selectedOrder._id ? (
+                    <>
+                      <Spinner size="sm" animation="border" />
+                      Downloading...
+                    </>
+                  ) : (
+                    <>
+                      <FaFilePdf />
+                      Download Invoice
+                    </>
+                  )}
                 </Button>
               )}
             </Modal.Footer>

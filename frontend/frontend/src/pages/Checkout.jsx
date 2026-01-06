@@ -95,7 +95,7 @@ const Checkout = () => {
         customerNotes: `Order placed by ${userInfo?.name || 'Customer'}`
       };
 
-      console.log('Order Data:', orderData); // Debug
+      console.log('Order Data:', orderData);
 
       // Create order
       const { data } = await createOrder(orderData);
@@ -106,8 +106,8 @@ const Checkout = () => {
       clearCartFromLocalStorage();
       window.dispatchEvent(new Event('cartUpdated'));
       
-      // Navigate to order confirmation
-      navigate(`/order/${data._id}`, {
+      // ✅ FIXED: Navigate to correct success page
+      navigate(`/order-success/${data._id}`, {
         state: { 
           order: data,
           message: 'Order placed successfully!'
