@@ -38,21 +38,23 @@ const {
   createOrder, 
   getMyOrders, 
   getOrderById, 
-  getOrders,  // ✅ Ye import hai kya?
+  getOrders,
   updateOrderToPaid, 
-  updateOrderStatus,  // ✅ Ye import hai kya?
+  updateOrderStatus,
   downloadInvoice, 
   getInvoiceStatus, 
   verifyPayment 
 } = require('./src/controllers/orderController');
 const { protect, admin } = require('./src/middleware/authMiddleware');
 
-// ✅ FIX: Import routes
+// ✅ FIX: Import ALL routes
 const productRoutes = require('./src/routes/productRoutes');
+const couponRoutes = require('./src/routes/couponRoutes'); // ✅ LINE 1: ADD THIS LINE
 // const orderRoutes = require('./src/routes/orderRoutes'); // Agar aapke paas orderRoutes file hai
 
-// ✅ FIX: Use product routes
+// ✅ FIX: Use all routes
 app.use('/api/products', productRoutes);
+app.use('/api/coupons', couponRoutes); // ✅ LINE 2: ADD THIS LINE
 
 // ✅ FIX: Import check karo
 console.log('Checking imports...');
@@ -90,7 +92,8 @@ app.get('/', (req, res) => {
     endpoints: {
       auth: '/api/auth',
       products: '/api/products',
-      orders: '/api/orders'
+      orders: '/api/orders',
+      coupons: '/api/coupons' // ✅ LINE 3: ADD THIS LINE
     }
   });
 });
@@ -128,6 +131,7 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📚 API: http://localhost:${PORT}`);
   console.log(`🔄 Mode: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`✅ Coupon API enabled at: http://localhost:${PORT}/api/coupons`); // ✅ LINE 4: ADD THIS LINE
 });
 
 module.exports = app;

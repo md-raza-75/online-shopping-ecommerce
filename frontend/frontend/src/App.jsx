@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Container, Button } from 'react-bootstrap'; // ✅ Button import
+import { Container, Button } from 'react-bootstrap';
 import { ToastContainer } from 'react-toastify';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import 'react-toastify/dist/ReactToastify.css';
@@ -22,7 +22,7 @@ import Register from './pages/Register';
 import ProductDetails from './pages/ProductDetails';
 import Cart from './pages/Cart';
 import Checkout from './pages/Checkout';
-import CheckoutSuccess from './pages/CheckoutSuccess'; // ✅ Correct import
+import CheckoutSuccess from './pages/CheckoutSuccess';
 import Profile from './pages/User/Profile';
 import Orders from './pages/User/Orders';
 
@@ -30,8 +30,9 @@ import Orders from './pages/User/Orders';
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import AddProduct from './pages/Admin/AddProduct';
 import EditProduct from './pages/Admin/EditProduct';
-import ProductList from './pages/Admin/ProductList'; // ✅ Import ProductList
-import AdminOrders from './pages/Admin/AdminOrders'; // ✅ Import AdminOrders (yeh file banana hoga)
+import ProductList from './pages/Admin/ProductList';
+import AdminOrders from './pages/Admin/AdminOrders';
+import AdminCoupon from './pages/Admin/AdminCoupon'; // ✅ IMPORT
 
 // Protected Route Component
 const ProtectedRoute = ({ children, adminOnly = false }) => {
@@ -71,6 +72,32 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
   return children;
 };
 
+// Public Route Component (for logged out users)
+const PublicRoute = ({ children }) => {
+  const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    const checkAuth = () => {
+      const userInfo = JSON.parse(localStorage.getItem('userInfo') || 'null');
+      setIsAuthenticated(!!(userInfo && userInfo.token));
+      setLoading(false);
+    };
+
+    checkAuth();
+  }, []);
+
+  if (loading) {
+    return <Loader />;
+  }
+
+  if (isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+};
+
 function App() {
   return (
     <AuthProvider>
@@ -83,12 +110,20 @@ function App() {
                 <Routes>
                   {/* Public Routes */}
                   <Route path="/" element={<Home />} />
-                  <Route path="/login" element={<Login />} />
-                  <Route path="/register" element={<Register />} />
+                  <Route path="/login" element={
+                    <PublicRoute>
+                      <Login />
+                    </PublicRoute>
+                  } />
+                  <Route path="/register" element={
+                    <PublicRoute>
+                      <Register />
+                    </PublicRoute>
+                  } />
                   <Route path="/product/:id" element={<ProductDetails />} />
+                  <Route path="/cart" element={<Cart />} />
                   
                   {/* Protected Routes - User */}
-                  <Route path="/cart" element={<Cart />} />
                   <Route path="/checkout" element={
                     <ProtectedRoute>
                       <Checkout />
@@ -121,9 +156,14 @@ function App() {
                       <ProductList />
                     </ProtectedRoute>
                   } />
-                  <Route path="/admin/orders" element={  // ✅ Add this route
+                  <Route path="/admin/orders" element={
                     <ProtectedRoute adminOnly>
                       <AdminOrders />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/admin/coupons" element={ // ✅ ADD THIS ROUTE
+                    <ProtectedRoute adminOnly>
+                      <AdminCoupon />
                     </ProtectedRoute>
                   } />
                   <Route path="/admin/add-product" element={
@@ -173,4 +213,4 @@ function App() {
   );
 }
 
-export default App; 
+export default App;

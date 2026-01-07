@@ -1,156 +1,117 @@
 const mongoose = require('mongoose');
 
-const orderItemSchema = new mongoose.Schema({
-  product: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Product',
-    required: true
-  },
-  name: {
-    type: String,
-    required: true
-  },
-  quantity: {
-    type: Number,
-    required: true,
-    min: [1, 'Quantity must be at least 1']
-  },
-  price: {
-    type: Number,
-    required: true
-  },
-  image: {
-    type: String,
-    default: ''
-  }
-}, { _id: false });
-
-const shippingAddressSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: [true, 'Please enter recipient name']
-  },
-  address: { 
-    type: String, 
-    required: [true, 'Please enter address'] 
-  },
-  city: { 
-    type: String, 
-    required: [true, 'Please enter city'] 
-  },
-  state: {
-    type: String,
-    required: [true, 'Please enter state']
-  },
-  country: { 
-    type: String, 
-    default: 'India' 
-  },
-  postalCode: { 
-    type: String, 
-    required: [true, 'Please enter postal code'] 
-  },
-  phone: {
-    type: String,
-    required: [true, 'Please enter phone number']
-  }
-}, { _id: false });
-
-const invoiceSchema = new mongoose.Schema({
-  invoiceNumber: {
-    type: String,
-    default: ''
-  },
-  generated: {
-    type: Boolean,
-    default: false
-  },
-  pdfPath: {
-    type: String,
-    default: ''
-  },
-  generatedAt: {
-    type: Date
-  },
-  downloadCount: {
-    type: Number,
-    default: 0
-  }
-}, { _id: false });
-
 const orderSchema = new mongoose.Schema({
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
   },
-  items: [orderItemSchema],
+  items: [{
+    product: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Product'
+    },
+    name: String,
+    quantity: Number,
+    price: Number,
+    image: String
+  }],
+  
+  // Amount details
   totalAmount: {
     type: Number,
     required: true
   },
-  shippingAddress: shippingAddressSchema,
+  taxAmount: {
+    type: Number,
+    default: 0
+  },
+  shippingAmount: {
+    type: Number,
+    default: 0
+  },
+  discountAmount: {
+    type: Number,
+    default: 0
+  },
+  
+  // Coupon details
+  couponCode: {
+    type: String,
+    default: null
+  },
+  couponDetails: {
+    code: String,
+    discountType: String,
+    discountValue: Number,
+    minOrderAmount: Number,
+    maxDiscount: Number
+  },
+  
+  // Shipping details
+  shippingAddress: {
+    name: String,
+    address: String,
+    city: String,
+    state: String,
+    country: String,
+    postalCode: String,
+    phone: String
+  },
+  
+  // Payment details
   paymentMethod: {
     type: String,
-    required: true,
-    enum: ['COD', 'Razorpay', 'Card', 'Wallet'],
+    enum: ['COD', 'Razorpay'],
     default: 'COD'
   },
   paymentStatus: {
     type: String,
-    enum: ['pending', 'completed', 'failed', 'refunded'],
+    enum: ['pending', 'completed', 'failed'],
     default: 'pending'
   },
-  orderStatus: {
-    type: String,
-    enum: ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'],
-    default: 'pending'
-  },
-  razorpayOrderId: String,
-  razorpayPaymentId: String,
-  razorpaySignature: String,
-  
-  // Payment details
   isPaid: {
     type: Boolean,
     default: false
   },
   paidAt: Date,
+  razorpayOrderId: String,
+  razorpayPaymentId: String,
+  razorpaySignature: String,
   
-  // Delivery details
+  // Order status
+  orderStatus: {
+    type: String,
+    enum: ['pending', 'processing', 'shipped', 'delivered', 'cancelled'],
+    default: 'pending'
+  },
   isDelivered: {
     type: Boolean,
     default: false
   },
   deliveredAt: Date,
   
-  // Invoice system
-  invoice: invoiceSchema,
-  
   // Tracking
   trackingNumber: String,
   courierName: String,
-  estimatedDelivery: Date,
   
   // Notes
-  adminNotes: String,
   customerNotes: String,
+  adminNotes: String,
   
-  // Discount
-  discountAmount: {
-    type: Number,
-    default: 0
-  },
-  couponCode: String,
-  
-  // Shipping
-  shippingAmount: {
-    type: Number,
-    default: 0
-  },
-  taxAmount: {
-    type: Number,
-    default: 0
+  // Invoice
+  invoice: {
+    invoiceNumber: String,
+    generated: {
+      type: Boolean,
+      default: false
+    },
+    pdfPath: String,
+    generatedAt: Date,
+    downloadCount: {
+      type: Number,
+      default: 0
+    }
   },
   
   // Timestamps
@@ -163,45 +124,50 @@ const orderSchema = new mongoose.Schema({
     default: Date.now
   }
 }, {
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  timestamps: true
 });
 
-// Update timestamp
-orderSchema.pre('save', function(next) {
-  this.updatedAt = Date.now();
-  
-  // Auto-calculate tax if not set
-  if (!this.taxAmount && this.totalAmount) {
-    this.taxAmount = this.totalAmount * 0.18;
-  }
-  
-  next();
-});
-
-// Virtual for readable order ID
+// Virtual for formatted order ID
 orderSchema.virtual('orderId').get(function() {
   return `ORD${this._id.toString().slice(-8).toUpperCase()}`;
 });
 
 // Virtual for invoice number
-orderSchema.virtual('formattedInvoiceNumber').get(function() {
-  if (this.invoice?.invoiceNumber) {
-    return this.invoice.invoiceNumber;
+orderSchema.virtual('invoiceNumber').get(function() {
+  return `INV${this._id.toString().slice(-8).toUpperCase()}`;
+});
+
+// Method to update order status
+orderSchema.methods.updateStatus = async function(status, trackingInfo = {}) {
+  this.orderStatus = status;
+  
+  if (status === 'delivered') {
+    this.isDelivered = true;
+    this.deliveredAt = Date.now();
+    
+    // Auto-mark COD orders as paid when delivered
+    if (this.paymentMethod === 'COD' && this.paymentStatus === 'pending') {
+      this.paymentStatus = 'completed';
+      this.isPaid = true;
+      this.paidAt = Date.now();
+    }
   }
-  return `TEMP-INV-${this._id.toString().slice(-6)}`;
-});
-
-// Virtual for grand total
-orderSchema.virtual('grandTotal').get(function() {
-  return this.totalAmount + this.taxAmount + this.shippingAmount - this.discountAmount;
-});
-
-// Indexes for better performance
-orderSchema.index({ user: 1, createdAt: -1 });
-orderSchema.index({ paymentStatus: 1 });
-orderSchema.index({ orderStatus: 1 });
-orderSchema.index({ createdAt: -1 });
+  
+  if (trackingInfo.trackingNumber) {
+    this.trackingNumber = trackingInfo.trackingNumber;
+  }
+  
+  if (trackingInfo.courierName) {
+    this.courierName = trackingInfo.courierName;
+  }
+  
+  if (trackingInfo.adminNotes) {
+    this.adminNotes = trackingInfo.adminNotes;
+  }
+  
+  return this.save();
+};
 
 const Order = mongoose.model('Order', orderSchema);
+
 module.exports = Order;

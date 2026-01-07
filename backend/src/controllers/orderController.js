@@ -1,11 +1,12 @@
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
+const Coupon = require('../models/Coupon');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-// ✅ FIX 1: Conditional Razorpay initialization
+// ✅ Conditional Razorpay initialization
 let razorpay = null;
 try {
   const Razorpay = require('razorpay');
@@ -22,20 +23,87 @@ try {
   console.error('❌ Razorpay initialization failed:', error.message);
 }
 
-// ✅ FIX 2: Import PDFGenerator (aapke paas hai ye file)
+// ✅ Import PDFGenerator
 const PDFGenerator = require('../services/pdfGenerator');
+
+// ✅ COUPON VALIDATION FUNCTION
+const validateAndCalculateCoupon = async (couponCode, orderAmount, userId) => {
+  if (!couponCode) {
+    return { success: true, discount: 0, coupon: null };
+  }
+
+  try {
+    // Find coupon
+    const coupon = await Coupon.findOne({ 
+      code: couponCode.toUpperCase(),
+      isActive: true 
+    });
+
+    if (!coupon) {
+      return { 
+        success: false, 
+        message: 'Invalid coupon code',
+        discount: 0 
+      };
+    }
+
+    // Check if coupon is valid
+    const validation = coupon.isValid(userId);
+    if (!validation.valid) {
+      return { 
+        success: false, 
+        message: validation.message,
+        discount: 0 
+      };
+    }
+
+    // Check minimum order amount
+    if (orderAmount < coupon.minOrderAmount) {
+      return { 
+        success: false, 
+        message: `Minimum order amount of ₹${coupon.minOrderAmount} required`,
+        discount: 0 
+      };
+    }
+
+    // Calculate discount
+    const discount = coupon.calculateDiscount(orderAmount);
+
+    return {
+      success: true,
+      discount,
+      coupon: {
+        _id: coupon._id,
+        code: coupon.code,
+        discountType: coupon.discountType,
+        discountValue: coupon.discountValue,
+        minOrderAmount: coupon.minOrderAmount,
+        maxDiscount: coupon.maxDiscount
+      }
+    };
+  } catch (error) {
+    console.error('Coupon validation error:', error);
+    return { 
+      success: false, 
+      message: 'Error validating coupon',
+      discount: 0 
+    };
+  }
+};
 
 // @desc    Create new order
 // @route   POST /api/orders
 // @access  Private
 const createOrder = async (req, res) => {
   try {
-    const { items, shippingAddress, paymentMethod, customerNotes } = req.body;
+    const { items, shippingAddress, paymentMethod, customerNotes, couponCode } = req.body;
+    const userId = req.user._id;
     
     console.log('📦 Creating order...', { 
       itemsCount: items?.length,
       paymentMethod,
-      userId: req.user._id 
+      couponCode,
+      userId 
     });
     
     // Validation
@@ -46,7 +114,7 @@ const createOrder = async (req, res) => {
       });
     }
     
-    // ✅ FIX 3: Better address validation
+    // Address validation
     const requiredFields = ['name', 'address', 'city', 'postalCode', 'phone'];
     const missingFields = requiredFields.filter(field => !shippingAddress?.[field]);
     
@@ -104,27 +172,53 @@ const createOrder = async (req, res) => {
       });
     }
     
+    // ✅ COUPON VALIDATION AND CALCULATION
+    let discountAmount = 0;
+    let couponDetails = null;
+    
+    if (couponCode) {
+      const couponResult = await validateAndCalculateCoupon(couponCode, totalAmount, userId);
+      
+      if (!couponResult.success) {
+        return res.status(400).json({
+          success: false,
+          message: couponResult.message
+        });
+      }
+      
+      discountAmount = couponResult.discount;
+      couponDetails = couponResult.coupon;
+      
+      console.log('🎫 Coupon applied:', {
+        code: couponCode,
+        discount: discountAmount,
+        couponDetails
+      });
+    }
+    
     // Calculate tax and shipping
     const taxAmount = totalAmount * 0.18;
     const shippingAmount = totalAmount > 999 ? 0 : 50;
-    const discountAmount = 0;
     const grandTotal = totalAmount + taxAmount + shippingAmount - discountAmount;
     
     console.log('💰 Order calculation:', {
       totalAmount,
       taxAmount,
       shippingAmount,
+      discountAmount,
       grandTotal
     });
     
     // Create order
     const order = new Order({
-      user: req.user._id,
+      user: userId,
       items: orderItems,
       totalAmount: grandTotal,
       taxAmount,
       shippingAmount,
       discountAmount,
+      couponCode: couponDetails ? couponDetails.code : null,
+      couponDetails: couponDetails,
       shippingAddress,
       paymentMethod: paymentMethod || 'COD',
       customerNotes,
@@ -132,7 +226,29 @@ const createOrder = async (req, res) => {
       paymentStatus: paymentMethod === 'COD' ? 'pending' : 'pending'
     });
     
-    // ✅ FIX 4: Safe Razorpay order creation
+    // ✅ UPDATE COUPON USAGE AFTER ORDER CREATION
+    if (couponCode && couponDetails) {
+      try {
+        const coupon = await Coupon.findOne({ code: couponCode.toUpperCase() });
+        if (coupon) {
+          coupon.usedCount += 1;
+          coupon.usedBy.push(userId);
+          
+          // Deactivate if usage limit reached
+          if (coupon.usedCount >= coupon.maxUsage) {
+            coupon.isActive = false;
+          }
+          
+          await coupon.save();
+          console.log(`✅ Coupon ${couponCode} usage updated: ${coupon.usedCount}/${coupon.maxUsage}`);
+        }
+      } catch (couponError) {
+        console.error('Error updating coupon usage:', couponError);
+        // Don't fail the order if coupon update fails
+      }
+    }
+    
+    // ✅ Safe Razorpay order creation
     let razorpayOrder = null;
     if (paymentMethod === 'Razorpay' && razorpay) {
       try {
@@ -141,9 +257,9 @@ const createOrder = async (req, res) => {
         razorpayOrder = await razorpay.orders.create({
           amount: Math.round(grandTotal * 100),
           currency: 'INR',
-          receipt: `order_${Date.now()}_${req.user._id}`,
+          receipt: `order_${Date.now()}_${userId}`,
           notes: {
-            userId: req.user._id.toString(),
+            userId: userId.toString(),
             orderFor: 'E-commerce Purchase'
           }
         });
@@ -154,7 +270,7 @@ const createOrder = async (req, res) => {
       } catch (razorpayError) {
         console.error('❌ Razorpay order creation error:', razorpayError.message);
         
-        // ✅ FIX 5: Fallback to COD if Razorpay fails
+        // Fallback to COD if Razorpay fails
         return res.status(400).json({
           success: false,
           message: 'Online payment currently unavailable. Please use Cash on Delivery (COD).',
@@ -186,7 +302,7 @@ const createOrder = async (req, res) => {
     // Generate invoice for COD orders
     if (paymentMethod === 'COD') {
       try {
-        const user = await User.findById(req.user._id);
+        const user = await User.findById(userId);
         const invoiceData = await PDFGenerator.generateInvoice(createdOrder, user);
         
         createdOrder.invoice = {
@@ -233,6 +349,49 @@ const createOrder = async (req, res) => {
       success: false,
       message: error.message || 'Server error creating order',
       error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+};
+
+// @desc    Validate coupon before checkout
+// @route   POST /api/orders/validate-coupon
+// @access  Private
+const validateCoupon = async (req, res) => {
+  try {
+    const { couponCode, orderAmount } = req.body;
+    const userId = req.user._id;
+
+    if (!couponCode || !orderAmount) {
+      return res.status(400).json({
+        success: false,
+        message: 'Coupon code and order amount are required'
+      });
+    }
+
+    const couponResult = await validateAndCalculateCoupon(couponCode, orderAmount, userId);
+
+    if (!couponResult.success) {
+      return res.status(400).json({
+        success: false,
+        ...couponResult
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        coupon: couponResult.coupon,
+        discount: couponResult.discount,
+        finalAmount: orderAmount - couponResult.discount,
+        originalAmount: orderAmount
+      },
+      message: 'Coupon is valid'
+    });
+  } catch (error) {
+    console.error('Validate coupon error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Server error validating coupon'
     });
   }
 };
@@ -840,6 +999,7 @@ const downloadInvoiceQuick = async (req, res) => {
 // ✅ Module exports
 module.exports = {
   createOrder,
+  validateCoupon,
   verifyPayment,
   getOrderById,
   getMyOrders,

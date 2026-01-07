@@ -10,7 +10,10 @@ import {
   FaUserShield,
   FaBars,
   FaStore,
-  FaShoppingBag
+  FaShoppingBag,
+  FaTag,
+  FaChartLine,
+  FaUsers
 } from 'react-icons/fa';
 
 const Navbar = () => {
@@ -54,7 +57,6 @@ const Navbar = () => {
 
   const loadUserInfo = () => {
     try {
-      // ✅ FIX: Check if localStorage item exists
       const userData = localStorage.getItem('userInfo');
       
       if (!userData || userData === 'undefined' || userData === 'null') {
@@ -68,15 +70,12 @@ const Navbar = () => {
     } catch (error) {
       console.error('Error loading user info:', error);
       setUserInfo(null);
-      
-      // Clear invalid data
       localStorage.removeItem('userInfo');
     }
   };
 
   const loadCartItems = () => {
     try {
-      // ✅ FIX: Check if localStorage item exists
       const cartData = localStorage.getItem('cartItems');
       
       if (!cartData || cartData === 'undefined' || cartData === 'null') {
@@ -88,38 +87,32 @@ const Navbar = () => {
       const cart = JSON.parse(cartData);
       setCartItems(cart);
       
-      // Calculate cart count
       const count = cart.reduce((total, item) => total + (item.quantity || 1), 0);
       setCartCount(count);
     } catch (error) {
       console.error('Error loading cart items:', error);
       setCartItems([]);
       setCartCount(0);
-      
-      // Clear invalid data
       localStorage.removeItem('cartItems');
     }
   };
 
   const logoutHandler = () => {
-    // Clear local storage
     localStorage.removeItem('userInfo');
     localStorage.removeItem('cartItems');
+    localStorage.removeItem('appliedCoupon');
+    localStorage.removeItem('checkoutCoupon');
     
-    // Reset state
     setUserInfo(null);
     setCartItems([]);
     setCartCount(0);
     
-    // Dispatch events
     window.dispatchEvent(new Event('userLogout'));
     window.dispatchEvent(new Event('cartUpdated'));
     
-    // Navigate to login
     navigate('/login');
   };
 
-  // Check if current route is active
   const isActive = (path) => {
     return location.pathname === path;
   };
@@ -232,7 +225,7 @@ const Navbar = () => {
                     <FaBox className="me-2" /> My Orders
                   </NavDropdown.Item>
                   
-                  {/* Admin Links */}
+                  {/* ✅ ADMIN LINKS */}
                   {userInfo.role === 'admin' && (
                     <>
                       <NavDropdown.Divider />
@@ -240,16 +233,20 @@ const Navbar = () => {
                         Admin Panel
                       </NavDropdown.Header>
                       <NavDropdown.Item as={Link} to="/admin" className="py-2">
-                        <FaUserShield className="me-2" /> Dashboard
+                        <FaChartLine className="me-2" /> Dashboard
                       </NavDropdown.Item>
                       <NavDropdown.Item as={Link} to="/admin/products" className="py-2">
-                        <i className="bi bi-box-seam me-2"></i> Products
+                        <FaShoppingBag className="me-2" /> Products
                       </NavDropdown.Item>
                       <NavDropdown.Item as={Link} to="/admin/orders" className="py-2">
                         <FaBox className="me-2" /> Orders
                       </NavDropdown.Item>
+                      {/* ✅ ADD COUPON LINK */}
+                      <NavDropdown.Item as={Link} to="/admin/coupons" className="py-2">
+                        <FaTag className="me-2" /> Manage Coupons
+                      </NavDropdown.Item>
                       <NavDropdown.Item as={Link} to="/admin/users" className="py-2">
-                        <FaUser className="me-2" /> Users
+                        <FaUsers className="me-2" /> Users
                       </NavDropdown.Item>
                     </>
                   )}

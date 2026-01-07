@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Form, Button, Alert, ListGroup, Badge } from 'react-bootstrap';
-import { FaShoppingCart, FaMapMarkerAlt, FaCreditCard, FaCheck, FaRupeeSign } from 'react-icons/fa';
+import { 
+  FaShoppingCart, FaMapMarkerAlt, FaCreditCard, FaCheck, 
+  FaRupeeSign, FaTag, FaTimes 
+} from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { createOrder } from '../services/api';
+import { createOrder, validateCoupon } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { getCartFromLocalStorage, clearCartFromLocalStorage } from '../services/api';
 
@@ -24,6 +27,13 @@ const Checkout = () => {
   const [paymentMethod, setPaymentMethod] = useState('COD');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  
+  // ✅ COUPON STATES
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponError, setCouponError] = useState('');
+  const [couponSuccess, setCouponSuccess] = useState('');
 
   useEffect(() => {
     const items = getCartFromLocalStorage();
@@ -36,6 +46,13 @@ const Checkout = () => {
         name: userInfo.name || '',
         phone: userInfo.phone || ''
       }));
+    }
+    
+    // Load applied coupon from localStorage
+    const savedCoupon = localStorage.getItem('checkoutCoupon');
+    if (savedCoupon) {
+      setAppliedCoupon(JSON.parse(savedCoupon));
+      localStorage.removeItem('checkoutCoupon');
     }
   }, [userInfo]);
 
@@ -55,8 +72,71 @@ const Checkout = () => {
       newErrors.phone = 'Phone number must be 10 digits';
     }
     
+    // ✅ Check minimum order amount for coupon
+    if (appliedCoupon) {
+      const subtotal = calculateSubtotal();
+      if (subtotal < appliedCoupon.minOrderAmount) {
+        newErrors.coupon = `Coupon requires minimum order of ₹${appliedCoupon.minOrderAmount}`;
+      }
+    }
+    
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  // ✅ APPLY COUPON FUNCTION
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim()) {
+      setCouponError('Please enter a coupon code');
+      return;
+    }
+
+    const subtotal = calculateSubtotal();
+    
+    if (subtotal === 0) {
+      setCouponError('Add items to cart before applying coupon');
+      return;
+    }
+
+    setCouponLoading(true);
+    setCouponError('');
+    setCouponSuccess('');
+
+    try {
+      const response = await validateCoupon(couponCode, subtotal);
+      
+      if (response.success) {
+        const couponData = {
+          code: response.data.coupon.code,
+          discountType: response.data.coupon.discountType,
+          discountValue: response.data.coupon.discountValue,
+          maxDiscount: response.data.coupon.maxDiscount,
+          discount: response.data.discount,
+          minOrderAmount: response.data.coupon.minOrderAmount
+        };
+        
+        setAppliedCoupon(couponData);
+        setCouponSuccess(`Coupon applied! You saved ₹${response.data.discount}`);
+        setCouponCode('');
+        
+        toast.success('Coupon applied successfully!');
+      } else {
+        setCouponError(response.message || 'Invalid coupon code');
+      }
+    } catch (error) {
+      console.error('Apply coupon error:', error);
+      setCouponError(error.response?.data?.message || 'Error applying coupon');
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  // ✅ REMOVE COUPON FUNCTION
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponError('');
+    setCouponSuccess('');
+    toast.info('Coupon removed');
   };
 
   const handlePlaceOrder = async () => {
@@ -92,7 +172,8 @@ const Checkout = () => {
           phone: shippingAddress.phone
         },
         paymentMethod,
-        customerNotes: `Order placed by ${userInfo?.name || 'Customer'}`
+        customerNotes: `Order placed by ${userInfo?.name || 'Customer'}`,
+        couponCode: appliedCoupon ? appliedCoupon.code : null // ✅ ADD COUPON CODE
       };
 
       console.log('Order Data:', orderData);
@@ -102,11 +183,13 @@ const Checkout = () => {
 
       toast.success('Order placed successfully!');
       
-      // Clear cart
+      // Clear cart and coupon
       clearCartFromLocalStorage();
+      localStorage.removeItem('appliedCoupon');
+      localStorage.removeItem('checkoutCoupon');
       window.dispatchEvent(new Event('cartUpdated'));
       
-      // ✅ FIXED: Navigate to correct success page
+      // Navigate to success page
       navigate(`/order-success/${data._id}`, {
         state: { 
           order: data,
@@ -141,8 +224,30 @@ const Checkout = () => {
     return calculateSubtotal() > 999 ? 0 : 50;
   };
 
+  // ✅ COUPON DISCOUNT CALCULATION
+  const calculateDiscount = () => {
+    if (!appliedCoupon) return 0;
+    
+    const subtotal = calculateSubtotal();
+    let discount = 0;
+    
+    if (appliedCoupon.discountType === 'percentage') {
+      discount = (subtotal * appliedCoupon.discountValue) / 100;
+      
+      // Apply max discount limit if set
+      if (appliedCoupon.maxDiscount && discount > appliedCoupon.maxDiscount) {
+        discount = appliedCoupon.maxDiscount;
+      }
+    } else {
+      // Fixed amount discount
+      discount = appliedCoupon.discountValue;
+    }
+    
+    return discount;
+  };
+
   const calculateTotal = () => {
-    return calculateSubtotal() + calculateTax() + calculateShipping();
+    return calculateSubtotal() + calculateTax() + calculateShipping() - calculateDiscount();
   };
 
   if (cartItems.length === 0) {
@@ -368,6 +473,71 @@ const Checkout = () => {
               Order Summary
             </Card.Header>
             <Card.Body>
+              {/* Coupon Section */}
+              {appliedCoupon ? (
+                <Alert variant="success" className="p-2 mb-3">
+                  <div className="d-flex justify-content-between align-items-center">
+                    <div>
+                      <FaTag className="me-2" />
+                      <strong>{appliedCoupon.code}</strong>
+                      <small className="ms-2">
+                        ({appliedCoupon.discountType === 'percentage' 
+                          ? `${appliedCoupon.discountValue}%` 
+                          : `₹${appliedCoupon.discountValue}`})
+                      </small>
+                    </div>
+                    <Button 
+                      variant="link" 
+                      className="p-0 text-danger"
+                      onClick={handleRemoveCoupon}
+                      title="Remove coupon"
+                    >
+                      <FaTimes />
+                    </Button>
+                  </div>
+                </Alert>
+              ) : (
+                <div className="mb-3">
+                  <Form.Group>
+                    <Form.Label className="small">Have a coupon code?</Form.Label>
+                    <div className="d-flex">
+                      <Form.Control
+                        type="text"
+                        placeholder="Enter coupon"
+                        value={couponCode}
+                        onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                        size="sm"
+                        className="me-2"
+                      />
+                      <Button 
+                        variant="outline-primary" 
+                        size="sm"
+                        onClick={handleApplyCoupon}
+                        disabled={couponLoading}
+                      >
+                        {couponLoading ? '...' : 'Apply'}
+                      </Button>
+                    </div>
+                    {couponError && (
+                      <Form.Text className="text-danger small">
+                        {couponError}
+                      </Form.Text>
+                    )}
+                    {couponSuccess && (
+                      <Form.Text className="text-success small">
+                        {couponSuccess}
+                      </Form.Text>
+                    )}
+                  </Form.Group>
+                </div>
+              )}
+              
+              {errors.coupon && (
+                <Alert variant="danger" className="py-2 mb-3">
+                  {errors.coupon}
+                </Alert>
+              )}
+              
               <ListGroup variant="flush">
                 {cartItems.map((item, index) => (
                   <ListGroup.Item key={index} className="d-flex justify-content-between align-items-center">
@@ -400,6 +570,14 @@ const Checkout = () => {
                     {calculateShipping() === 0 ? 'FREE' : <><FaRupeeSign size={12} />{calculateShipping().toFixed(2)}</>}
                   </span>
                 </ListGroup.Item>
+                
+                {/* Coupon Discount */}
+                {appliedCoupon && (
+                  <ListGroup.Item className="d-flex justify-content-between text-success">
+                    <span>Coupon Discount</span>
+                    <span>-<FaRupeeSign size={12} />{calculateDiscount().toFixed(2)}</span>
+                  </ListGroup.Item>
+                )}
                 
                 <ListGroup.Item className="d-flex justify-content-between bg-light">
                   <strong>Total Amount</strong>

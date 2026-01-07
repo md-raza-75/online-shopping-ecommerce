@@ -12,7 +12,6 @@ const API = axios.create({
   timeout: 10000,
 });
 
-
 // Request interceptor to add token
 API.interceptors.request.use(
   (config) => {
@@ -43,6 +42,8 @@ API.interceptors.response.use(
       if (error.response.status === 401) {
         localStorage.removeItem('userInfo');
         localStorage.removeItem('cartItems');
+        localStorage.removeItem('appliedCoupon');
+        localStorage.removeItem('checkoutCoupon');
         window.dispatchEvent(new Event('userLogout'));
         if (window.location.pathname !== '/login') {
           window.location.href = '/login';
@@ -67,11 +68,29 @@ API.interceptors.response.use(
     }
     
     console.error('API Error:', errorMessage);
-    return Promise.reject(errorMessage);
+    return Promise.reject(new Error(errorMessage));
   }
 );
+// ========== COUPON APIs ==========
+export const validateCoupon = (couponCode, orderAmount) => {
+  return API.post('/coupons/validate', { code: couponCode, orderAmount });
+};
 
+export const getCoupons = () => {
+  return API.get('/coupons');
+};
 
+export const createCoupon = (couponData) => {
+  return API.post('/coupons', couponData);
+};
+
+export const updateCoupon = (couponId, couponData) => {
+  return API.put(`/coupons/${couponId}`, couponData);
+};
+
+export const deleteCoupon = (couponId) => {
+  return API.delete(`/coupons/${couponId}`);
+};
 // ========== AUTH APIs ==========
 export const login = (email, password) => 
   API.post('/auth/login', { email, password });
@@ -104,7 +123,6 @@ export const updateProduct = (id, productData) =>
 export const deleteProduct = (id) => 
   API.delete(`/products/${id}`);
 
-// ADMIN PRODUCTS - IMPORTANT: Ye function add karo
 export const getAdminProducts = (page = 1, keyword = '') => 
   API.get(`/products/admin/all`, { 
     params: { page, keyword } 
@@ -123,9 +141,8 @@ export const getOrderById = (id) =>
 export const getAllOrders = () => 
   API.get('/orders');
 
-
-export const updateOrderStatus = (id, status) => 
-  API.put(`/orders/${id}/status`, { orderStatus: status });
+export const updateOrderStatus = (id, statusData) => 
+  API.put(`/orders/${id}/status`, statusData);
 
 export const updateOrderToPaid = (id, paymentId) => 
   API.put(`/orders/${id}/pay`, { paymentId });
@@ -159,14 +176,11 @@ export const downloadInvoice = async (orderId) => {
 
     const blob = await response.blob();
     
-    // Check if blob is valid
     if (!blob || blob.size === 0) {
       throw new Error('Empty PDF received from server');
     }
     
-    // Check if it's actually a PDF
     if (!blob.type.includes('pdf')) {
-      // Might be JSON error instead of PDF
       const text = await blob.text();
       try {
         const errorData = JSON.parse(text);
@@ -184,7 +198,6 @@ export const downloadInvoice = async (orderId) => {
   }
 };
 
-// Alternative method using axios (if fetch doesn't work)
 export const downloadInvoiceAxios = async (orderId) => {
   try {
     const response = await API.get(`/orders/${orderId}/invoice`, {
@@ -229,6 +242,8 @@ export const getCartFromLocalStorage = () => {
 export const clearCartFromLocalStorage = () => {
   try {
     localStorage.removeItem('cartItems');
+    localStorage.removeItem('appliedCoupon');
+    localStorage.removeItem('checkoutCoupon');
     window.dispatchEvent(new Event('cartUpdated'));
     return true;
   } catch (error) {
@@ -241,20 +256,16 @@ export const addToCart = (product, quantity = 1) => {
   try {
     const cartItems = getCartFromLocalStorage();
     
-    // Check if product already exists in cart
     const existingItemIndex = cartItems.findIndex(item => item.product === product._id);
     
     if (existingItemIndex > -1) {
-      // Update quantity if exists
       cartItems[existingItemIndex].quantity += quantity;
       
-      // Check stock limit
       if (cartItems[existingItemIndex].quantity > cartItems[existingItemIndex].stock) {
         cartItems[existingItemIndex].quantity = cartItems[existingItemIndex].stock;
         throw new Error(`Only ${cartItems[existingItemIndex].stock} items available in stock`);
       }
     } else {
-      // Add new item
       cartItems.push({
         product: product._id,
         name: product.name,
@@ -278,6 +289,11 @@ export const removeFromCart = (productId) => {
     const cartItems = getCartFromLocalStorage();
     const updatedCart = cartItems.filter(item => item.product !== productId);
     saveCartToLocalStorage(updatedCart);
+    
+    if (updatedCart.length === 0) {
+      localStorage.removeItem('appliedCoupon');
+    }
+    
     return updatedCart;
   } catch (error) {
     console.error('Error removing from cart:', error);
@@ -300,6 +316,10 @@ export const updateCartQuantity = (productId, quantity) => {
     });
     
     saveCartToLocalStorage(updatedCart);
+    
+    // Clear coupon when quantity changes
+    localStorage.removeItem('appliedCoupon');
+    
     return updatedCart;
   } catch (error) {
     console.error('Error updating cart quantity:', error);
@@ -325,6 +345,56 @@ export const getCartTotal = () => {
     console.error('Error calculating cart total:', error);
     return 0;
   }
+};
+
+// ========== COUPON Helper Functions ==========
+export const saveCouponToLocalStorage = (coupon) => {
+  try {
+    localStorage.setItem('appliedCoupon', JSON.stringify(coupon));
+    return true;
+  } catch (error) {
+    console.error('Error saving coupon to localStorage:', error);
+    return false;
+  }
+};
+
+export const getCouponFromLocalStorage = () => {
+  try {
+    const coupon = localStorage.getItem('appliedCoupon');
+    return coupon ? JSON.parse(coupon) : null;
+  } catch (error) {
+    console.error('Error loading coupon from localStorage:', error);
+    return null;
+  }
+};
+
+export const removeCouponFromLocalStorage = () => {
+  try {
+    localStorage.removeItem('appliedCoupon');
+    localStorage.removeItem('checkoutCoupon');
+    return true;
+  } catch (error) {
+    console.error('Error removing coupon from localStorage:', error);
+    return false;
+  }
+};
+
+export const calculateCouponDiscount = (coupon, subtotal) => {
+  if (!coupon) return 0;
+  
+  let discount = 0;
+  
+  if (coupon.discountType === 'percentage') {
+    discount = (subtotal * coupon.discountValue) / 100;
+    
+    if (coupon.maxDiscount && discount > coupon.maxDiscount) {
+      discount = coupon.maxDiscount;
+    }
+  } else {
+    discount = coupon.discountValue;
+  }
+  
+  return Math.min(discount, subtotal);
 };
 
 // ========== Utility Functions ==========
@@ -353,25 +423,22 @@ export const triggerUserLogin = () => {
 export const triggerUserLogout = () => {
   localStorage.removeItem('userInfo');
   localStorage.removeItem('cartItems');
+  localStorage.removeItem('appliedCoupon');
+  localStorage.removeItem('checkoutCoupon');
   window.dispatchEvent(new Event('userLogout'));
 };
 
 // ========== PDF Download Helper ==========
 export const downloadPDF = (blob, filename) => {
   try {
-    // Create blob URL
     const url = window.URL.createObjectURL(blob);
-    
-    // Create download link
     const link = document.createElement('a');
     link.href = url;
     link.download = filename;
     
-    // Append to body and click
     document.body.appendChild(link);
     link.click();
     
-    // Cleanup
     setTimeout(() => {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
@@ -385,15 +452,22 @@ export const downloadPDF = (blob, filename) => {
 };
 
 // ========== Order Helper ==========
-export const calculateOrderTotal = (items) => {
+export const calculateOrderTotal = (items, coupon = null) => {
   const subtotal = items.reduce((total, item) => total + (item.price * item.quantity), 0);
   const shipping = subtotal >= 999 ? 0 : 100;
   const tax = subtotal * 0.18;
+  
+  let discount = 0;
+  if (coupon) {
+    discount = calculateCouponDiscount(coupon, subtotal);
+  }
+  
   return {
     subtotal,
     shipping,
     tax,
-    total: subtotal + shipping + tax
+    discount,
+    total: Math.max(0, subtotal + shipping + tax - discount)
   };
 };
 
@@ -401,17 +475,19 @@ export const calculateOrderTotal = (items) => {
 export const debugAPI = () => {
   const user = JSON.parse(localStorage.getItem('userInfo') || 'null');
   const cart = getCartFromLocalStorage();
+  const coupon = getCouponFromLocalStorage();
   
   console.log('=== API DEBUG INFO ===');
   console.log('User:', user);
   console.log('Cart Items:', cart);
   console.log('Cart Count:', getCartItemCount());
   console.log('Cart Total:', getCartTotal());
+  console.log('Applied Coupon:', coupon);
   console.log('API URL:', API_URL);
   console.log('=====================');
 };
 
-// ========== Export All Functions ==========
+// ========== Export Default ==========
 export default {
   // Auth
   login,
@@ -436,6 +512,13 @@ export default {
   updateOrderStatus,
   updateOrderToPaid,
   verifyPayment,
+  
+  // Coupons
+  validateCoupon,
+  getCoupons,
+  createCoupon,
+  updateCoupon,
+  deleteCoupon,
   
   // Invoice
   downloadInvoice,
