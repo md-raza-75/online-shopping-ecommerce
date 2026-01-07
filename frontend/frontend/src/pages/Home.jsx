@@ -416,7 +416,7 @@ const Home = () => {
             <Col lg={6}>
               <div className="position-relative hero-image-container animate__animated animate__fadeInRight animate__delay-1s">
                 <img 
-                  src="https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
+                  src="https://images.unsplash.com/photo-1505740420928-5e560c06d30e?ixlib=rb-4.0.3&auto=format&fit=crop&w-800&q-80"
                   alt="Shopping"
                   className="img-fluid rounded-4 shadow-lg hero-image-float"
                   style={{ 

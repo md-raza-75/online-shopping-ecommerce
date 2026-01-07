@@ -17,6 +17,7 @@ import { CartProvider } from './context/CartContext';
 
 // Pages
 import Home from './pages/Home';
+import Products from './pages/Products'; // ✅ ADD THIS IMPORT
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ProductDetails from './pages/ProductDetails';
@@ -32,7 +33,7 @@ import AddProduct from './pages/Admin/AddProduct';
 import EditProduct from './pages/Admin/EditProduct';
 import ProductList from './pages/Admin/ProductList';
 import AdminOrders from './pages/Admin/AdminOrders';
-import AdminCoupon from './pages/Admin/AdminCoupon'; // ✅ IMPORT
+import AdminCoupon from './pages/Admin/AdminCoupon';
 
 // Protected Route Component
 const ProtectedRoute = ({ children, adminOnly = false }) => {
@@ -110,6 +111,7 @@ function App() {
                 <Routes>
                   {/* Public Routes */}
                   <Route path="/" element={<Home />} />
+                  <Route path="/products" element={<Products />} /> {/* ✅ ADD THIS LINE */}
                   <Route path="/login" element={
                     <PublicRoute>
                       <Login />
@@ -161,7 +163,7 @@ function App() {
                       <AdminOrders />
                     </ProtectedRoute>
                   } />
-                  <Route path="/admin/coupons" element={ // ✅ ADD THIS ROUTE
+                  <Route path="/admin/coupons" element={
                     <ProtectedRoute adminOnly>
                       <AdminCoupon />
                     </ProtectedRoute>
