@@ -83,7 +83,11 @@ const AdminOrders = () => {
   const handleStatusUpdate = async (orderId, newStatus) => {
     try {
       setUpdatingStatus(true);
-      await updateOrderStatus(orderId, newStatus);
+      
+      // ✅ FIX: Send as JSON object, not just string
+      const statusData = { orderStatus: newStatus };
+      await updateOrderStatus(orderId, statusData);
+      
       toast.success(`Order status updated to ${newStatus}`);
       fetchOrders(); // Refresh orders
     } catch (error) {

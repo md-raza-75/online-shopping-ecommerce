@@ -60,20 +60,24 @@ const createCoupon = async (req, res) => {
 // @access  Private
 const validateCoupon = async (req, res) => {
   try {
-    const { code, orderAmount } = req.body;
+    // ✅ ACCEPT BOTH parameter names for compatibility
+    const { code, couponCode, orderAmount } = req.body;
     const userId = req.user._id;
 
-    if (!code || !orderAmount) {
+    // ✅ Use whichever is available
+    const actualCode = code || couponCode;
+    
+    if (!actualCode || !orderAmount) {
       return res.status(400).json({
         success: false,
         message: 'Coupon code and order amount are required'
       });
     }
 
-    // Find coupon
+    // ✅ Find coupon WITHOUT isActive condition
     const coupon = await Coupon.findOne({ 
-      code: code.toUpperCase(),
-      isActive: true 
+      code: actualCode.toUpperCase()
+      // ❌ REMOVE: isActive: true - because isValid() method will check this
     });
 
     if (!coupon) {

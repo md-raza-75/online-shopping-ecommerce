@@ -71,9 +71,10 @@ API.interceptors.response.use(
     return Promise.reject(new Error(errorMessage));
   }
 );
+
 // ========== COUPON APIs ==========
 export const validateCoupon = (couponCode, orderAmount) => {
-  return API.post('/coupons/validate', { code: couponCode, orderAmount });
+  return API.post('/orders/validate-coupon', { code: couponCode, orderAmount });
 };
 
 export const getCoupons = () => {
@@ -91,6 +92,7 @@ export const updateCoupon = (couponId, couponData) => {
 export const deleteCoupon = (couponId) => {
   return API.delete(`/coupons/${couponId}`);
 };
+
 // ========== AUTH APIs ==========
 export const login = (email, password) => 
   API.post('/auth/login', { email, password });

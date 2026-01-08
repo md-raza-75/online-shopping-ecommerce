@@ -45,21 +45,26 @@ const {
   getInvoiceStatus, 
   verifyPayment 
 } = require('./src/controllers/orderController');
+
+// ✅ CRITICAL: Import couponController functions
+const { validateCoupon } = require('./src/controllers/couponController'); // ✅ ADD THIS LINE
+
 const { protect, admin } = require('./src/middleware/authMiddleware');
 
 // ✅ FIX: Import ALL routes
 const productRoutes = require('./src/routes/productRoutes');
-const couponRoutes = require('./src/routes/couponRoutes'); // ✅ LINE 1: ADD THIS LINE
+const couponRoutes = require('./src/routes/couponRoutes');
 // const orderRoutes = require('./src/routes/orderRoutes'); // Agar aapke paas orderRoutes file hai
 
 // ✅ FIX: Use all routes
 app.use('/api/products', productRoutes);
-app.use('/api/coupons', couponRoutes); // ✅ LINE 2: ADD THIS LINE
+app.use('/api/coupons', couponRoutes);
 
 // ✅ FIX: Import check karo
 console.log('Checking imports...');
 console.log('getOrders exists:', typeof getOrders);
 console.log('updateOrderStatus exists:', typeof updateOrderStatus);
+console.log('validateCoupon exists:', typeof validateCoupon); // ✅ ADD THIS LINE
 
 // Auth Routes
 app.post('/api/auth/register', registerUser);
@@ -79,9 +84,12 @@ app.get('/api/orders/:id/invoice', protect, downloadInvoice);
 app.get('/api/orders/:id/invoice-status', protect, getInvoiceStatus);
 
 // ✅ CRITICAL FIX: Add these missing routes
-app.get('/api/orders', protect, admin, getOrders);  // Ye line add karo
+app.get('/api/orders', protect, admin, getOrders);
 app.put('/api/orders/:id/pay', protect, admin, updateOrderToPaid);
-app.put('/api/orders/:id/status', protect, admin, updateOrderStatus);  // Ye line add karo
+app.put('/api/orders/:id/status', protect, admin, updateOrderStatus);
+
+// ✅ CRITICAL FIX: Add coupon validation route for frontend
+app.post('/api/orders/validate-coupon', protect, validateCoupon); // ✅ ADD THIS LINE
 
 // Welcome route
 app.get('/', (req, res) => {
@@ -93,7 +101,7 @@ app.get('/', (req, res) => {
       auth: '/api/auth',
       products: '/api/products',
       orders: '/api/orders',
-      coupons: '/api/coupons' // ✅ LINE 3: ADD THIS LINE
+      coupons: '/api/coupons'
     }
   });
 });
@@ -131,7 +139,8 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📚 API: http://localhost:${PORT}`);
   console.log(`🔄 Mode: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`✅ Coupon API enabled at: http://localhost:${PORT}/api/coupons`); // ✅ LINE 4: ADD THIS LINE
+  console.log(`✅ Coupon API enabled at: http://localhost:${PORT}/api/coupons`);
+  console.log(`✅ Frontend coupon validation at: http://localhost:${PORT}/api/orders/validate-coupon`); // ✅ ADD THIS LINE
 });
 
 module.exports = app;
