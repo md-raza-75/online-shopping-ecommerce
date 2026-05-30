@@ -12,11 +12,17 @@ connectDB();
 
 const app = express();
 
-// Middleware
+// ✅ UPDATED CORS - Sab allow karega Cloudflare Tunnel ke liye
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
-  credentials: true
+  origin: '*',  // All origins allow for demo
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
 }));
+
+// Handle preflight requests
+app.options('*', cors());
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -24,7 +30,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/downloads', express.static(path.join(__dirname, 'downloads')));
 
-// ✅ FIX: Import ALL controllers properly
+// Import controllers
 const { registerUser, loginUser, getUserProfile, getUsers } = require('./src/controllers/authController');
 const { 
   getProducts, 
@@ -46,25 +52,18 @@ const {
   verifyPayment 
 } = require('./src/controllers/orderController');
 
-// ✅ CRITICAL: Import couponController functions
-const { validateCoupon } = require('./src/controllers/couponController'); // ✅ ADD THIS LINE
+// ✅ Import couponController
+const { validateCoupon } = require('./src/controllers/couponController');
 
 const { protect, admin } = require('./src/middleware/authMiddleware');
 
-// ✅ FIX: Import ALL routes
+// Import routes
 const productRoutes = require('./src/routes/productRoutes');
 const couponRoutes = require('./src/routes/couponRoutes');
-// const orderRoutes = require('./src/routes/orderRoutes'); // Agar aapke paas orderRoutes file hai
 
-// ✅ FIX: Use all routes
+// Use routes
 app.use('/api/products', productRoutes);
 app.use('/api/coupons', couponRoutes);
-
-// ✅ FIX: Import check karo
-console.log('Checking imports...');
-console.log('getOrders exists:', typeof getOrders);
-console.log('updateOrderStatus exists:', typeof updateOrderStatus);
-console.log('validateCoupon exists:', typeof validateCoupon); // ✅ ADD THIS LINE
 
 // Auth Routes
 app.post('/api/auth/register', registerUser);
@@ -72,24 +71,19 @@ app.post('/api/auth/login', loginUser);
 app.get('/api/auth/profile', protect, getUserProfile);
 app.get('/api/auth/users', protect, admin, getUsers);
 
-// Product Routes (via router)
-// Already handled by: app.use('/api/products', productRoutes);
-
-// ✅ FIX: Order Routes (DIRECTLY in app.js if missing from routes file)
+// Order Routes
 app.post('/api/orders', protect, createOrder);
 app.get('/api/orders/myorders', protect, getMyOrders);
 app.get('/api/orders/:id', protect, getOrderById);
 app.post('/api/orders/:id/verify-payment', protect, verifyPayment);
 app.get('/api/orders/:id/invoice', protect, downloadInvoice);
 app.get('/api/orders/:id/invoice-status', protect, getInvoiceStatus);
-
-// ✅ CRITICAL FIX: Add these missing routes
 app.get('/api/orders', protect, admin, getOrders);
 app.put('/api/orders/:id/pay', protect, admin, updateOrderToPaid);
 app.put('/api/orders/:id/status', protect, admin, updateOrderStatus);
 
-// ✅ CRITICAL FIX: Add coupon validation route for frontend
-app.post('/api/orders/validate-coupon', protect, validateCoupon); // ✅ ADD THIS LINE
+// ✅ Coupon validation route
+app.post('/api/orders/validate-coupon', protect, validateCoupon);
 
 // Welcome route
 app.get('/', (req, res) => {
@@ -115,21 +109,34 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// ✅ Cloudflare Tunnel testing route
+app.get('/api/tunnel-test', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Cloudflare Tunnel Working!',
+    tunnel: 'Active',
+    frontend_url: 'https://ecommerce-demo.trycloudflare.com',
+    backend_url: 'https://ecommerce-demo.trycloudflare.com/api',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
-    message: 'API endpoint not found'
+    message: 'API endpoint not found',
+    requested_url: req.originalUrl
   });
 });
 
 // Error handler
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error('Server Error:', err.stack);
   res.status(500).json({
     success: false,
-    message: 'Something went wrong!',
-    error: process.env.NODE_ENV === 'development' ? err.message : {}
+    message: 'Internal Server Error',
+    error: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong!'
   });
 });
 
@@ -137,10 +144,10 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📚 API: http://localhost:${PORT}`);
-  console.log(`🔄 Mode: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`✅ Coupon API enabled at: http://localhost:${PORT}/api/coupons`);
-  console.log(`✅ Frontend coupon validation at: http://localhost:${PORT}/api/orders/validate-coupon`); // ✅ ADD THIS LINE
+  console.log(`📚 Local API: http://localhost:${PORT}`);
+  console.log(`🌐 Cloudflare Tunnel Ready!`);
+  console.log(`🔗 Use this for demo: cloudflared tunnel --config tunnel-config.yml run ecommerce-demo`);
+  console.log(`✅ CORS configured for Cloudflare Tunnel`);
 });
 
 module.exports = app;

@@ -5,10 +5,16 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+
+    // ✅ Cloudflare Tunnel Host Allow
+    allowedHosts: true,
+
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        // ✅ Updated Backend Tunnel URL
+        target:  'https://steal-wayne-gained-vol.trycloudflare.com',
         changeOrigin: true,
+        secure: true,
       }
     }
   }

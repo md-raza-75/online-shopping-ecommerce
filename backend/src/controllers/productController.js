@@ -225,11 +225,143 @@ const deleteProduct = async (req, res) => {
   }
 };
 
+// @desc    Create new review
+// @route   POST /api/products/:id/reviews
+// @access  Private
+const createProductReview = async (req, res) => {
+  try {
+    const { rating, comment } = req.body;
+
+    // Check if rating and comment are provided
+    if (!rating || !comment) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a rating and a comment'
+      });
+    }
+
+    const product = await Product.findById(req.params.id);
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+
+    // Check if user already reviewed the product
+    const alreadyReviewed = product.reviews.find(
+      (r) => r.user.toString() === req.user._id.toString()
+    );
+
+    if (alreadyReviewed) {
+      return res.status(400).json({
+        success: false,
+        message: 'Product already reviewed'
+      });
+    }
+
+    const review = {
+      name: req.user.name,
+      rating: Number(rating),
+      comment,
+      user: req.user._id
+    };
+
+    product.reviews.push(review);
+
+    product.numReviews = product.reviews.length;
+
+    product.rating =
+      product.reviews.reduce((acc, item) => item.rating + acc, 0) /
+      product.reviews.length;
+
+    await product.save();
+
+    return res.status(201).json({
+      success: true,
+      message: 'Review added successfully',
+      data: product.reviews
+    });
+  } catch (error) {
+    console.error('Create review error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Server error'
+    });
+  }
+};
+
+// @desc    Delete product review
+// @route   DELETE /api/products/:id/reviews/:reviewId
+// @access  Private
+const deleteProductReview = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+
+    // Find the review
+    const review = product.reviews.find(
+      (r) => r._id.toString() === req.params.reviewId
+    );
+
+    if (!review) {
+      return res.status(404).json({
+        success: false,
+        message: 'Review not found'
+      });
+    }
+
+    // Check authorization: User can delete only their own, admin can delete any
+    if (review.user.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to delete this review'
+      });
+    }
+
+    // Remove the review
+    product.reviews.pull(req.params.reviewId);
+
+    // Recalculate values
+    product.numReviews = product.reviews.length;
+    if (product.reviews.length > 0) {
+      product.rating =
+        product.reviews.reduce((acc, item) => item.rating + acc, 0) /
+        product.reviews.length;
+    } else {
+      product.rating = 0;
+    }
+
+    await product.save();
+
+    return res.json({
+      success: true,
+      message: 'Review deleted successfully',
+      data: product.reviews
+    });
+  } catch (error) {
+    console.error('Delete review error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Server error'
+    });
+  }
+};
+
 module.exports = {
   getProducts,
   getAdminProducts,
   getProductById,
   createProduct,
   updateProduct,
-  deleteProduct
+  deleteProduct,
+  createProductReview,
+  deleteProductReview
 };

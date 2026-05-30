@@ -15,13 +15,14 @@ import {
 } from 'react-icons/fa';
 import { toast } from 'react-toastify';
 import Loader, { PageLoader } from '../components/Loader';
-import { getProductById } from '../services/api';
-import { saveCartToLocalStorage, getCartFromLocalStorage } from '../services/api';
+import { getProductById, createProductReview, deleteProductReview, saveCartToLocalStorage, getCartFromLocalStorage } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 const ProductDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   
+  const { user } = useAuth();
   const [product, setProduct] = useState(null);
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -30,31 +31,69 @@ const ProductDetails = () => {
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [isInWishlist, setIsInWishlist] = useState(false);
 
-  useEffect(() => {
-    const fetchProduct = async () => {
-      try {
-        const data = await getProductById(id);
-        setProduct(data.data || data);
-        setLoading(false);
-        
-        // TODO: Fetch related products based on category
-        // For now, we'll use a mock
-        setRelatedProducts([
-          { _id: '1', name: 'Related Product 1', price: 999, image: 'https://via.placeholder.com/150' },
-          { _id: '2', name: 'Related Product 2', price: 1499, image: 'https://via.placeholder.com/150' },
-        ]);
-        
-      } catch (err) {
-        console.error('Error fetching product:', err);
-        setError('Product not found or server error');
-        setLoading(false);
-      }
-    };
+  // Review states
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
 
+  const fetchProduct = async (showLoader = true) => {
+    try {
+      if (showLoader) setLoading(true);
+      const data = await getProductById(id);
+      setProduct(data.data || data);
+      if (showLoader) setLoading(false);
+      
+      // TODO: Fetch related products based on category
+      // For now, we'll use a mock
+      setRelatedProducts([
+        { _id: '1', name: 'Related Product 1', price: 999, image: 'https://via.placeholder.com/150' },
+        { _id: '2', name: 'Related Product 2', price: 1499, image: 'https://via.placeholder.com/150' },
+      ]);
+      
+    } catch (err) {
+      console.error('Error fetching product:', err);
+      setError('Product not found or server error');
+      if (showLoader) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     if (id) {
-      fetchProduct();
+      fetchProduct(true);
     }
   }, [id]);
+
+  const submitReviewHandler = async (e) => {
+    e.preventDefault();
+    if (!comment.trim()) {
+      toast.error('Please enter a comment');
+      return;
+    }
+    setSubmittingReview(true);
+    try {
+      await createProductReview(product._id, { rating, comment });
+      toast.success('Review submitted successfully!');
+      setComment('');
+      setRating(5);
+      fetchProduct(false); // reload product without full screen loading spinner
+    } catch (err) {
+      toast.error(err.message || 'Failed to submit review');
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
+  const deleteReviewHandler = async (reviewId) => {
+    if (window.confirm('Are you sure you want to delete this review?')) {
+      try {
+        await deleteProductReview(product._id, reviewId);
+        toast.success('Review deleted successfully');
+        fetchProduct(false); // reload product details
+      } catch (err) {
+        toast.error(err.message || 'Failed to delete review');
+      }
+    }
+  };
 
   const addToCartHandler = () => {
     try {
@@ -186,10 +225,17 @@ const ProductDetails = () => {
                   <div className="d-flex align-items-center mb-3">
                     <div className="text-warning me-2">
                       {[1, 2, 3, 4, 5].map((star) => (
-                        <FaStar key={star} size={16} className="me-1" />
+                        <FaStar 
+                          key={star} 
+                          size={16} 
+                          className="me-1" 
+                          color={star <= (product.rating || 0) ? '#ffc107' : '#e4e5e9'}
+                        />
                       ))}
                     </div>
-                    <span className="text-muted">(4.5 • 120 reviews)</span>
+                    <span className="text-muted">
+                      ({(product.rating || 0).toFixed(1)} • {product.numReviews || 0} {product.numReviews === 1 ? 'review' : 'reviews'})
+                    </span>
                   </div>
                 </div>
                 <div>
@@ -385,13 +431,113 @@ const ProductDetails = () => {
                     </table>
                   </div>
                 </Tab>
-                <Tab eventKey="reviews" title="Reviews (120)">
+                <Tab eventKey="reviews" title={`Reviews (${product.numReviews || 0})`}>
                   <div className="p-3">
-                    <h4>Customer Reviews</h4>
-                    <div className="text-center py-5">
-                      <p className="text-muted">No reviews yet. Be the first to review!</p>
-                      <Button variant="outline-primary">Write a Review</Button>
-                    </div>
+                    <Row>
+                      <Col md={6} className="mb-4">
+                        <h4 className="mb-4">Customer Reviews</h4>
+                        {!product.reviews || product.reviews.length === 0 ? (
+                          <Alert variant="info">No reviews yet. Be the first to review!</Alert>
+                        ) : (
+                          <div className="d-flex flex-column gap-3">
+                            {product.reviews.map((review) => (
+                              <Card key={review._id} className="border-0 bg-light shadow-sm">
+                                <Card.Body className="p-3">
+                                  <div className="d-flex justify-content-between align-items-center mb-2">
+                                    <strong>{review.name}</strong>
+                                    <small className="text-muted">
+                                      {new Date(review.createdAt).toLocaleDateString(undefined, {
+                                        year: 'numeric',
+                                        month: 'short',
+                                        day: 'numeric'
+                                      })}
+                                    </small>
+                                  </div>
+                                  <div className="text-warning mb-2">
+                                    {[1, 2, 3, 4, 5].map((star) => (
+                                      <FaStar 
+                                        key={star} 
+                                        size={14} 
+                                        color={star <= review.rating ? '#ffc107' : '#e4e5e9'}
+                                        className="me-1"
+                                      />
+                                    ))}
+                                  </div>
+                                  <p className="mb-0 text-secondary" style={{ whiteSpace: 'pre-line' }}>
+                                    {review.comment}
+                                  </p>
+                                  {user && (user._id === review.user || user.role === 'admin') && (
+                                    <div className="text-end mt-2">
+                                      <Button 
+                                        variant="link" 
+                                        className="text-danger p-0 text-decoration-none" 
+                                        size="sm"
+                                        onClick={() => deleteReviewHandler(review._id)}
+                                      >
+                                        Delete Review
+                                      </Button>
+                                    </div>
+                                  )}
+                                </Card.Body>
+                              </Card>
+                            ))}
+                          </div>
+                        )}
+                      </Col>
+
+                      <Col md={6}>
+                        <h4 className="mb-4">Write a Review</h4>
+                        {user ? (
+                          product.reviews?.some((r) => r.user?.toString() === user?._id?.toString()) ? (
+                            <Alert variant="success">
+                              You have already reviewed this product. Thank you!
+                            </Alert>
+                          ) : (
+                            <Form onSubmit={submitReviewHandler} className="bg-light p-4 rounded shadow-sm">
+                              <Form.Group className="mb-3" controlId="review-rating">
+                                <Form.Label className="fw-bold">Rating</Form.Label>
+                                <Form.Select 
+                                  value={rating} 
+                                  onChange={(e) => setRating(Number(e.target.value))}
+                                  className="w-auto"
+                                >
+                                  <option value="5">5 - Excellent</option>
+                                  <option value="4">4 - Very Good</option>
+                                  <option value="3">3 - Good</option>
+                                  <option value="2">2 - Fair</option>
+                                  <option value="1">1 - Poor</option>
+                                </Form.Select>
+                              </Form.Group>
+
+                              <Form.Group className="mb-3" controlId="review-comment">
+                                <Form.Label className="fw-bold">Review Comment</Form.Label>
+                                <Form.Control 
+                                  as="textarea" 
+                                  rows={4} 
+                                  value={comment}
+                                  onChange={(e) => setComment(e.target.value)}
+                                  placeholder="Share your thoughts about this product..."
+                                  required
+                                />
+                              </Form.Group>
+
+                              <Button 
+                                type="submit" 
+                                variant="primary" 
+                                disabled={submittingReview}
+                                className="fw-bold px-4 py-2"
+                              >
+                                {submittingReview ? 'Submitting...' : 'Submit Review'}
+                              </Button>
+                            </Form>
+                          )
+                        ) : (
+                          <Alert variant="warning">
+                            Please <a href="/login" className="alert-link">login</a> to write a review.
+                          </Alert>
+                        )}
+                      </Col>
+                    </Row>
                   </div>
                 </Tab>
               </Tabs>

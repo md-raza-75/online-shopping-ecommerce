@@ -130,6 +130,12 @@ export const getAdminProducts = (page = 1, keyword = '') =>
     params: { page, keyword } 
   });
 
+export const createProductReview = (id, reviewData) => 
+  API.post(`/products/${id}/reviews`, reviewData);
+
+export const deleteProductReview = (productId, reviewId) => 
+  API.delete(`/products/${productId}/reviews/${reviewId}`);
+
 // ========== ORDER APIs ==========
 export const createOrder = (orderData) => 
   API.post('/orders', orderData);
@@ -505,6 +511,8 @@ export default {
   updateProduct,
   deleteProduct,
   getAdminProducts,
+  createProductReview,
+  deleteProductReview,
   
   // Orders
   createOrder,

@@ -6,7 +6,9 @@ const {
   createProduct, 
   updateProduct, 
   deleteProduct,
-  getAdminProducts  // ✅ Ye function imported hai na?
+  getAdminProducts,
+  createProductReview,
+  deleteProductReview
 } = require('../controllers/productController');
 const { protect } = require('../middleware/authMiddleware');
 const { admin } = require('../middleware/adminMiddleware');
@@ -14,6 +16,10 @@ const { admin } = require('../middleware/adminMiddleware');
 // Public routes
 router.get('/', getProducts);
 router.get('/:id', getProductById);
+
+// Review routes
+router.post('/:id/reviews', protect, createProductReview);
+router.delete('/:id/reviews/:reviewId', protect, deleteProductReview);
 
 // Admin routes (protected + admin)
 router.get('/admin/all', protect, admin, getAdminProducts);  // ✅ Ye route correct hai
