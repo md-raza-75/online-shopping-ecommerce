@@ -1,7 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:5000/api';
-
+const API_URL = `${import.meta.env.VITE_API_URL}/api`;
 // Create axios instance with default config
 const API = axios.create({
   baseURL: API_URL,
@@ -31,13 +30,13 @@ API.interceptors.response.use(
   (response) => response.data,
   (error) => {
     let errorMessage = 'Network Error. Please try again.';
-    
+
     if (error.response) {
       // Server responded with error status
-      errorMessage = error.response.data?.message || 
-                    error.response.data?.error || 
-                    `Server Error: ${error.response.status}`;
-      
+      errorMessage = error.response.data?.message ||
+        error.response.data?.error ||
+        `Server Error: ${error.response.status}`;
+
       // Auto logout on 401
       if (error.response.status === 401) {
         localStorage.removeItem('userInfo');
@@ -49,12 +48,12 @@ API.interceptors.response.use(
           window.location.href = '/login';
         }
       }
-      
+
       // Handle 404 errors
       if (error.response.status === 404) {
         errorMessage = 'Resource not found';
       }
-      
+
       // Handle 500 errors
       if (error.response.status === 500) {
         errorMessage = 'Internal server error. Please try again later.';
@@ -66,7 +65,7 @@ API.interceptors.response.use(
       // Something happened in setting up the request
       errorMessage = error.message;
     }
-    
+
     console.error('API Error:', errorMessage);
     return Promise.reject(new Error(errorMessage));
   }
@@ -94,75 +93,75 @@ export const deleteCoupon = (couponId) => {
 };
 
 // ========== AUTH APIs ==========
-export const login = (email, password) => 
+export const login = (email, password) =>
   API.post('/auth/login', { email, password });
 
-export const register = (name, email, password) => 
+export const register = (name, email, password) =>
   API.post('/auth/register', { name, email, password });
 
-export const getProfile = () => 
+export const getProfile = () =>
   API.get('/auth/profile');
 
-export const getUsers = () => 
+export const getUsers = () =>
   API.get('/auth/users');
 
-export const updateProfile = (userData) => 
+export const updateProfile = (userData) =>
   API.put('/auth/profile', userData);
 
 // ========== PRODUCT APIs ==========
-export const getProducts = (params = {}) => 
+export const getProducts = (params = {}) =>
   API.get('/products', { params });
 
-export const getProductById = (id) => 
+export const getProductById = (id) =>
   API.get(`/products/${id}`);
 
-export const createProduct = (productData) => 
+export const createProduct = (productData) =>
   API.post('/products', productData);
 
-export const updateProduct = (id, productData) => 
+export const updateProduct = (id, productData) =>
   API.put(`/products/${id}`, productData);
 
-export const deleteProduct = (id) => 
+export const deleteProduct = (id) =>
   API.delete(`/products/${id}`);
 
-export const getAdminProducts = (page = 1, keyword = '') => 
-  API.get(`/products/admin/all`, { 
-    params: { page, keyword } 
+export const getAdminProducts = (page = 1, keyword = '') =>
+  API.get(`/products/admin/all`, {
+    params: { page, keyword }
   });
 
-export const createProductReview = (id, reviewData) => 
+export const createProductReview = (id, reviewData) =>
   API.post(`/products/${id}/reviews`, reviewData);
 
-export const deleteProductReview = (productId, reviewId) => 
+export const deleteProductReview = (productId, reviewId) =>
   API.delete(`/products/${productId}/reviews/${reviewId}`);
 
 // ========== ORDER APIs ==========
-export const createOrder = (orderData) => 
+export const createOrder = (orderData) =>
   API.post('/orders', orderData);
 
-export const getMyOrders = () => 
+export const getMyOrders = () =>
   API.get('/orders/myorders');
 
-export const getOrderById = (id) => 
+export const getOrderById = (id) =>
   API.get(`/orders/${id}`);
 
-export const getAllOrders = () => 
+export const getAllOrders = () =>
   API.get('/orders');
 
-export const updateOrderStatus = (id, statusData) => 
+export const updateOrderStatus = (id, statusData) =>
   API.put(`/orders/${id}/status`, statusData);
 
-export const updateOrderToPaid = (id, paymentId) => 
+export const updateOrderToPaid = (id, paymentId) =>
   API.put(`/orders/${id}/pay`, { paymentId });
 
-export const verifyPayment = (orderId, paymentData) => 
+export const verifyPayment = (orderId, paymentData) =>
   API.post(`/orders/${orderId}/verify-payment`, paymentData);
 
 // ========== INVOICE APIs ==========
 export const downloadInvoice = async (orderId) => {
   try {
     const user = JSON.parse(localStorage.getItem('userInfo') || '{}');
-    
+
     const response = await fetch(`${API_URL}/orders/${orderId}/invoice`, {
       method: 'GET',
       headers: {
@@ -178,16 +177,16 @@ export const downloadInvoice = async (orderId) => {
       } catch {
         errorData = { message: `Server error: ${response.status}` };
       }
-      
+
       throw new Error(errorData.message || `Failed to download invoice: ${response.status}`);
     }
 
     const blob = await response.blob();
-    
+
     if (!blob || blob.size === 0) {
       throw new Error('Empty PDF received from server');
     }
-    
+
     if (!blob.type.includes('pdf')) {
       const text = await blob.text();
       try {
@@ -197,9 +196,9 @@ export const downloadInvoice = async (orderId) => {
         throw new Error('Server returned invalid PDF file');
       }
     }
-    
+
     return { data: blob };
-    
+
   } catch (error) {
     console.error('Invoice download error:', error);
     throw error;
@@ -214,7 +213,7 @@ export const downloadInvoiceAxios = async (orderId) => {
         'Accept': 'application/pdf'
       }
     });
-    
+
     return response;
   } catch (error) {
     console.error('Axios invoice download error:', error);
@@ -222,7 +221,7 @@ export const downloadInvoiceAxios = async (orderId) => {
   }
 };
 
-export const getInvoiceStatus = (orderId) => 
+export const getInvoiceStatus = (orderId) =>
   API.get(`/orders/${orderId}/invoice-status`);
 
 // ========== CART Helper Functions ==========
@@ -263,12 +262,12 @@ export const clearCartFromLocalStorage = () => {
 export const addToCart = (product, quantity = 1) => {
   try {
     const cartItems = getCartFromLocalStorage();
-    
+
     const existingItemIndex = cartItems.findIndex(item => item.product === product._id);
-    
+
     if (existingItemIndex > -1) {
       cartItems[existingItemIndex].quantity += quantity;
-      
+
       if (cartItems[existingItemIndex].quantity > cartItems[existingItemIndex].stock) {
         cartItems[existingItemIndex].quantity = cartItems[existingItemIndex].stock;
         throw new Error(`Only ${cartItems[existingItemIndex].stock} items available in stock`);
@@ -283,7 +282,7 @@ export const addToCart = (product, quantity = 1) => {
         quantity: Math.min(quantity, product.stock)
       });
     }
-    
+
     saveCartToLocalStorage(cartItems);
     return cartItems;
   } catch (error) {
@@ -297,11 +296,11 @@ export const removeFromCart = (productId) => {
     const cartItems = getCartFromLocalStorage();
     const updatedCart = cartItems.filter(item => item.product !== productId);
     saveCartToLocalStorage(updatedCart);
-    
+
     if (updatedCart.length === 0) {
       localStorage.removeItem('appliedCoupon');
     }
-    
+
     return updatedCart;
   } catch (error) {
     console.error('Error removing from cart:', error);
@@ -322,12 +321,12 @@ export const updateCartQuantity = (productId, quantity) => {
       }
       return item;
     });
-    
+
     saveCartToLocalStorage(updatedCart);
-    
+
     // Clear coupon when quantity changes
     localStorage.removeItem('appliedCoupon');
-    
+
     return updatedCart;
   } catch (error) {
     console.error('Error updating cart quantity:', error);
@@ -389,19 +388,19 @@ export const removeCouponFromLocalStorage = () => {
 
 export const calculateCouponDiscount = (coupon, subtotal) => {
   if (!coupon) return 0;
-  
+
   let discount = 0;
-  
+
   if (coupon.discountType === 'percentage') {
     discount = (subtotal * coupon.discountValue) / 100;
-    
+
     if (coupon.maxDiscount && discount > coupon.maxDiscount) {
       discount = coupon.maxDiscount;
     }
   } else {
     discount = coupon.discountValue;
   }
-  
+
   return Math.min(discount, subtotal);
 };
 
@@ -443,15 +442,15 @@ export const downloadPDF = (blob, filename) => {
     const link = document.createElement('a');
     link.href = url;
     link.download = filename;
-    
+
     document.body.appendChild(link);
     link.click();
-    
+
     setTimeout(() => {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
     }, 100);
-    
+
     return true;
   } catch (error) {
     console.error('Error downloading PDF:', error);
@@ -464,12 +463,12 @@ export const calculateOrderTotal = (items, coupon = null) => {
   const subtotal = items.reduce((total, item) => total + (item.price * item.quantity), 0);
   const shipping = subtotal >= 999 ? 0 : 100;
   const tax = subtotal * 0.18;
-  
+
   let discount = 0;
   if (coupon) {
     discount = calculateCouponDiscount(coupon, subtotal);
   }
-  
+
   return {
     subtotal,
     shipping,
@@ -484,7 +483,7 @@ export const debugAPI = () => {
   const user = JSON.parse(localStorage.getItem('userInfo') || 'null');
   const cart = getCartFromLocalStorage();
   const coupon = getCouponFromLocalStorage();
-  
+
   console.log('=== API DEBUG INFO ===');
   console.log('User:', user);
   console.log('Cart Items:', cart);
@@ -503,7 +502,7 @@ export default {
   getProfile,
   getUsers,
   updateProfile,
-  
+
   // Products
   getProducts,
   getProductById,
@@ -513,7 +512,7 @@ export default {
   getAdminProducts,
   createProductReview,
   deleteProductReview,
-  
+
   // Orders
   createOrder,
   getMyOrders,
@@ -522,19 +521,19 @@ export default {
   updateOrderStatus,
   updateOrderToPaid,
   verifyPayment,
-  
+
   // Coupons
   validateCoupon,
   getCoupons,
   createCoupon,
   updateCoupon,
   deleteCoupon,
-  
+
   // Invoice
   downloadInvoice,
   downloadInvoiceAxios,
   getInvoiceStatus,
-  
+
   // Cart
   saveCartToLocalStorage,
   getCartFromLocalStorage,
@@ -544,7 +543,7 @@ export default {
   updateCartQuantity,
   getCartItemCount,
   getCartTotal,
-  
+
   // Utilities
   formatCurrency,
   validateEmail,
