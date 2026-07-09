@@ -1,16 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Container, Row, Col, Card, Table, Badge, Button, 
-  Form, Alert, Pagination, Modal 
-} from 'react-bootstrap';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Modal } from 'react-bootstrap';
 import { 
   FaEdit, FaTrash, FaEye, FaPlus, FaSearch, 
-  FaBox, FaArrowLeft, FaExclamationTriangle 
+  FaBox, FaArrowLeft, FaExclamationTriangle, FaCheck
 } from 'react-icons/fa';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { getAdminProducts, deleteProduct } from '../../services/api';
-import Loader, { PageLoader } from '../../components/Loader';
+import { PageLoader } from '../../components/Loader';
 
 const ProductList = () => {
   const navigate = useNavigate();
@@ -21,22 +19,16 @@ const ProductList = () => {
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [deleteModal, setDeleteModal] = useState({ show: false, product: null });
-  const [stats, setStats] = useState({
-    totalProducts: 0,
-    activeProducts: 0,
-    outOfStock: 0,
-    lowStock: 0
-  });
+  const [stats, setStats] = useState({ totalProducts: 0, activeProducts: 0, outOfStock: 0, lowStock: 0 });
 
   useEffect(() => {
     fetchProducts();
-  }, [page, searchKeyword]);
+  }, [page]); // Removed searchKeyword from dependency to allow manual search trigger
 
   const fetchProducts = async () => {
     try {
       setLoading(true);
       const userInfo = JSON.parse(localStorage.getItem('userInfo') || 'null');
-      
       if (!userInfo || userInfo.role !== 'admin') {
         navigate('/login');
         return;
@@ -49,7 +41,6 @@ const ProductList = () => {
       setPages(productsData.pages || 1);
       setTotal(productsData.total || 0);
       
-      // Calculate stats
       const activeProducts = productsData.products?.filter(p => p.isActive).length || 0;
       const outOfStock = productsData.products?.filter(p => p.stock === 0).length || 0;
       const lowStock = productsData.products?.filter(p => p.stock > 0 && p.stock <= 5).length || 0;
@@ -61,7 +52,6 @@ const ProductList = () => {
         lowStock
       });
     } catch (error) {
-      console.error('Error fetching products:', error);
       toast.error('Failed to load products');
     } finally {
       setLoading(false);
@@ -71,299 +61,205 @@ const ProductList = () => {
   const handleSearch = (e) => {
     e.preventDefault();
     setPage(1);
-  };
-
-  const handleDeleteClick = (product) => {
-    setDeleteModal({ show: true, product });
+    fetchProducts();
   };
 
   const handleDeleteConfirm = async () => {
     if (!deleteModal.product) return;
-    
     try {
       await deleteProduct(deleteModal.product._id);
       toast.success('Product deleted successfully!');
       setDeleteModal({ show: false, product: null });
       fetchProducts();
     } catch (error) {
-      console.error('Error deleting product:', error);
       toast.error('Failed to delete product');
     }
   };
 
   const getStockBadge = (stock) => {
-    if (stock > 10) {
-      return <Badge bg="success">{stock}</Badge>;
-    } else if (stock > 0) {
-      return <Badge bg="warning">{stock}</Badge>;
-    } else {
-      return <Badge bg="danger">Out</Badge>;
-    }
+    if (stock > 10) return <span className="premium-badge badge-success px-2 py-1">In Stock ({stock})</span>;
+    if (stock > 0) return <span className="premium-badge badge-warning px-2 py-1">Low ({stock})</span>;
+    return <span className="premium-badge badge-danger px-2 py-1">Out of Stock</span>;
   };
 
   const getStatusBadge = (isActive) => {
-    return isActive ? (
-      <Badge bg="success">Active</Badge>
-    ) : (
-      <Badge bg="danger">Inactive</Badge>
-    );
+    return isActive ? <span className="premium-badge badge-success px-3 py-1 d-inline-flex align-items-center gap-1"><FaCheck size={10}/> Active</span> 
+                    : <span className="premium-badge badge-danger px-3 py-1">Inactive</span>;
   };
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 0
-    }).format(amount);
-  };
+  const formatCurrency = (amount) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(amount);
 
   if (loading) return <PageLoader />;
 
   return (
-    <Container className="py-5">
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <div>
-          <Button variant="outline-secondary" as={Link} to="/admin" className="me-3">
-            <FaArrowLeft className="me-2" />
-            Back to Dashboard
-          </Button>
-          <h1 className="h3 fw-bold d-inline-block mb-0">
-            <FaBox className="me-2" />
-            Product Management
-          </h1>
+    <div className="container-fluid py-5 px-4 px-md-5 bg-light" style={{ minHeight: '100vh' }}>
+      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="d-flex flex-wrap justify-content-between align-items-center mb-5 gap-3">
+        <div className="d-flex align-items-center gap-3">
+          <Link to="/admin" className="btn btn-light rounded-circle shadow-sm p-2 text-primary" title="Back to Dashboard">
+            <FaArrowLeft />
+          </Link>
+          <div>
+            <h1 className="h2 fw-bold text-dark d-flex align-items-center gap-3 m-0">
+              <FaBox className="text-primary" /> Product Management
+            </h1>
+            <p className="text-muted mt-1 mb-0">Total {total} products found</p>
+          </div>
         </div>
-        <Button as={Link} to="/admin/add-product" variant="primary">
-          <FaPlus className="me-2" />
-          Add New Product
-        </Button>
-      </div>
+        <Link to="/admin/add-product" className="btn-premium px-4 py-2 text-decoration-none">
+          <FaPlus className="me-2" /> Add New Product
+        </Link>
+      </motion.div>
 
       {/* Stats Cards */}
-      <Row className="g-3 mb-4">
-        <Col md={3} sm={6}>
-          <Card className="border-0 shadow-sm text-center">
-            <Card.Body>
-              <h3 className="text-primary">{stats.totalProducts}</h3>
-              <p className="text-muted mb-0">Total Products</p>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col md={3} sm={6}>
-          <Card className="border-0 shadow-sm text-center">
-            <Card.Body>
-              <h3 className="text-success">{stats.activeProducts}</h3>
-              <p className="text-muted mb-0">Active</p>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col md={3} sm={6}>
-          <Card className="border-0 shadow-sm text-center">
-            <Card.Body>
-              <h3 className="text-danger">{stats.outOfStock}</h3>
-              <p className="text-muted mb-0">Out of Stock</p>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col md={3} sm={6}>
-          <Card className="border-0 shadow-sm text-center">
-            <Card.Body>
-              <h3 className="text-warning">{stats.lowStock}</h3>
-              <p className="text-muted mb-0">Low Stock</p>
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="row g-4 mb-5">
+        {[
+          { title: 'Total Products', value: stats.totalProducts, color: 'primary' },
+          { title: 'Active', value: stats.activeProducts, color: 'success' },
+          { title: 'Out of Stock', value: stats.outOfStock, color: 'danger' },
+          { title: 'Low Stock', value: stats.lowStock, color: 'warning' },
+        ].map((stat, i) => (
+          <div key={i} className="col-xl-3 col-md-6">
+            <div className="glass-card p-4 text-center hover-lift position-relative overflow-hidden h-100">
+              <h2 className={`fw-bold text-${stat.color} mb-1 fs-1`}>{stat.value}</h2>
+              <p className="text-muted fw-bold text-uppercase small m-0">{stat.title}</p>
+            </div>
+          </div>
+        ))}
+      </motion.div>
 
       {/* Search Bar */}
-      <Card className="mb-4 shadow-sm border-0">
-        <Card.Body>
-          <Form onSubmit={handleSearch}>
-            <Row>
-              <Col md={9}>
-                <Form.Control
-                  type="text"
-                  placeholder="Search products by name, category..."
-                  value={searchKeyword}
-                  onChange={(e) => setSearchKeyword(e.target.value)}
-                  className="py-2"
-                />
-              </Col>
-              <Col md={3}>
-                <Button
-                  type="submit"
-                  variant="info"
-                  className="w-100 py-2 d-flex align-items-center justify-content-center"
-                >
-                  <FaSearch className="me-2" />
-                  Search
-                </Button>
-              </Col>
-            </Row>
-          </Form>
-        </Card.Body>
-      </Card>
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-panel p-4 mb-5">
+        <form onSubmit={handleSearch}>
+          <div className="row g-3">
+            <div className="col-md-9 position-relative">
+              <FaSearch className="position-absolute top-50 translate-middle-y text-muted" style={{ left: '20px' }} />
+              <input
+                type="text"
+                placeholder="Search products by name, category..."
+                value={searchKeyword}
+                onChange={(e) => setSearchKeyword(e.target.value)}
+                className="input-premium w-100 py-3 ps-5"
+              />
+            </div>
+            <div className="col-md-3">
+              <button type="submit" className="btn-premium w-100 py-3 h-100 d-flex align-items-center justify-content-center gap-2">
+                <FaSearch /> Search
+              </button>
+            </div>
+          </div>
+        </form>
+      </motion.div>
 
       {/* Products Table */}
-      <Card className="shadow-sm border-0">
-        <Card.Body className="p-0">
-          <div className="table-responsive">
-            <Table hover className="mb-0">
-              <thead className="table-light">
-                <tr>
-                  <th>#</th>
-                  <th>Product</th>
-                  <th>Category</th>
-                  <th>Price</th>
-                  <th>Stock</th>
-                  <th>Status</th>
-                  <th className="text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="glass-panel p-0 overflow-hidden mb-5">
+        <div className="table-responsive">
+          <table className="table table-hover table-premium align-middle mb-0">
+            <thead className="bg-light">
+              <tr>
+                <th className="py-4 px-4 text-muted">Product</th>
+                <th className="py-4 text-muted">Category</th>
+                <th className="py-4 text-muted">Price</th>
+                <th className="py-4 text-muted text-center">Stock</th>
+                <th className="py-4 text-muted text-center">Status</th>
+                <th className="py-4 px-4 text-end text-muted">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <AnimatePresence>
                 {products.length === 0 ? (
-                  <tr>
-                    <td colSpan="7" className="text-center py-5">
-                      <div className="text-muted">
-                        <FaBox size={48} className="mb-3" />
-                        <h5>No products found</h5>
-                        <p>Try adjusting your search or add a new product</p>
-                      </div>
+                  <motion.tr initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                    <td colSpan="6" className="text-center py-5">
+                      <FaBox size={50} className="text-muted opacity-25 mb-3" />
+                      <h5 className="text-dark fw-bold">No products found</h5>
+                      <p className="text-muted">Try adjusting your search or add a new product.</p>
                     </td>
-                  </tr>
+                  </motion.tr>
                 ) : (
                   products.map((product, index) => (
-                    <tr key={product._id}>
-                      <td>{(page - 1) * 20 + index + 1}</td>
-                      <td>
-                        <div className="d-flex align-items-center">
+                    <motion.tr key={product._id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ delay: index * 0.05 }}>
+                      <td className="py-4 px-4">
+                        <div className="d-flex align-items-center gap-3">
                           <img
                             src={product.image}
                             alt={product.name}
-                            className="rounded me-3"
-                            style={{
-                              width: '60px',
-                              height: '60px',
-                              objectFit: 'cover'
-                            }}
-                            onError={(e) => {
-                              e.target.src = 'https://via.placeholder.com/60x60?text=No+Image';
-                            }}
+                            className="rounded shadow-sm"
+                            style={{ width: '50px', height: '50px', objectFit: 'cover' }}
+                            onError={(e) => { e.target.src = 'https://via.placeholder.com/60x60?text=No+Image'; }}
                           />
                           <div>
-                            <div className="fw-bold">{product.name}</div>
-                            <small className="text-muted text-truncate d-block" style={{ maxWidth: '200px' }}>
-                              {product.description?.substring(0, 50)}...
-                            </small>
-                            <small className="text-muted">
-                              ID: {product._id.substring(0, 8)}
-                            </small>
+                            <div className="fw-bold text-dark text-truncate" style={{ maxWidth: '200px' }}>{product.name}</div>
+                            <small className="text-muted">ID: {product._id.substring(0, 8)}</small>
                           </div>
                         </div>
                       </td>
-                      <td>
-                        <Badge bg="secondary">{product.category}</Badge>
+                      <td className="py-4">
+                        <span className="premium-badge badge-primary bg-opacity-10 text-primary px-3 py-1 fs-6">{product.category}</span>
                       </td>
-                      <td className="fw-bold">{formatCurrency(product.price)}</td>
-                      <td>{getStockBadge(product.stock)}</td>
-                      <td>{getStatusBadge(product.isActive)}</td>
-                      <td className="text-center">
-                        <div className="d-flex justify-content-center gap-2">
-                          <Button
-                            variant="outline-info"
-                            size="sm"
-                            as={Link}
-                            to={`/product/${product._id}`}
-                            title="View Product"
-                          >
+                      <td className="py-4 fw-bold text-dark">{formatCurrency(product.price)}</td>
+                      <td className="py-4 text-center">{getStockBadge(product.stock)}</td>
+                      <td className="py-4 text-center">{getStatusBadge(product.isActive)}</td>
+                      <td className="py-4 px-4 text-end">
+                        <div className="d-flex justify-content-end gap-2 align-items-center">
+                          <Link to={`/product/${product._id}`} className="btn btn-light rounded-circle shadow-sm text-primary p-2 d-flex align-items-center justify-content-center" style={{ width: '35px', height: '35px' }} title="View Product">
                             <FaEye />
-                          </Button>
-                          <Button
-                            variant="outline-warning"
-                            size="sm"
-                            as={Link}
-                            to={`/admin/edit-product/${product._id}`}
-                            title="Edit Product"
-                          >
+                          </Link>
+                          <Link to={`/admin/edit-product/${product._id}`} className="btn btn-light rounded-circle shadow-sm text-warning p-2 d-flex align-items-center justify-content-center" style={{ width: '35px', height: '35px' }} title="Edit Product">
                             <FaEdit />
-                          </Button>
-                          <Button
-                            variant="outline-danger"
-                            size="sm"
-                            onClick={() => handleDeleteClick(product)}
+                          </Link>
+                          <button 
+                            className="btn btn-light rounded-circle shadow-sm text-danger p-2 d-flex align-items-center justify-content-center" 
+                            style={{ width: '35px', height: '35px' }} 
+                            onClick={() => setDeleteModal({ show: true, product })}
                             title="Delete Product"
-                            disabled={!product.isActive}
                           >
                             <FaTrash />
-                          </Button>
+                          </button>
                         </div>
                       </td>
-                    </tr>
+                    </motion.tr>
                   ))
                 )}
-              </tbody>
-            </Table>
-          </div>
-        </Card.Body>
-      </Card>
+              </AnimatePresence>
+            </tbody>
+          </table>
+        </div>
+      </motion.div>
 
       {/* Pagination */}
       {pages > 1 && (
-        <div className="d-flex justify-content-center mt-4">
-          <Pagination>
-            <Pagination.Prev
-              onClick={() => setPage(page - 1)}
-              disabled={page === 1}
-            />
-            
+        <div className="d-flex justify-content-center">
+          <div className="glass-card p-2 d-inline-flex gap-2 rounded-pill">
+            <button className="btn btn-light rounded-pill px-3 fw-bold text-muted" disabled={page === 1} onClick={() => setPage(page - 1)}>Prev</button>
             {[...Array(pages).keys()].map((x) => (
-              <Pagination.Item
-                key={x + 1}
-                active={x + 1 === page}
-                onClick={() => setPage(x + 1)}
-              >
+              <button key={x + 1} className={`btn rounded-circle fw-bold ${x + 1 === page ? 'btn-primary shadow-sm text-white' : 'btn-light text-muted'}`} style={{ width: '40px', height: '40px' }} onClick={() => setPage(x + 1)}>
                 {x + 1}
-              </Pagination.Item>
+              </button>
             ))}
-            
-            <Pagination.Next
-              onClick={() => setPage(page + 1)}
-              disabled={page === pages}
-            />
-          </Pagination>
+            <button className="btn btn-light rounded-pill px-3 fw-bold text-muted" disabled={page === pages} onClick={() => setPage(page + 1)}>Next</button>
+          </div>
         </div>
       )}
 
       {/* Delete Confirmation Modal */}
       <Modal show={deleteModal.show} onHide={() => setDeleteModal({ show: false, product: null })} centered>
-        <Modal.Header closeButton>
-          <Modal.Title>
-            <FaExclamationTriangle className="me-2 text-danger" />
-            Confirm Delete
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <Alert variant="danger">
-            <h6>Are you sure you want to delete this product?</h6>
-            <p className="mb-2">
-              <strong>{deleteModal.product?.name}</strong>
-            </p>
-            <p className="mb-0 text-muted">
-              This product will be marked as inactive and won't be visible to customers.
-              This action can be reversed by editing the product.
-            </p>
-          </Alert>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setDeleteModal({ show: false, product: null })}>
-            Cancel
-          </Button>
-          <Button variant="danger" onClick={handleDeleteConfirm}>
-            <FaTrash className="me-2" />
-            Delete Product
-          </Button>
-        </Modal.Footer>
+        <div className="glass-card border-0 p-4 text-center">
+          <div className="mb-4">
+            <div className="bg-danger bg-opacity-10 d-inline-flex p-4 rounded-circle mb-3">
+              <FaExclamationTriangle size={40} className="text-danger" />
+            </div>
+            <h4 className="fw-bold text-dark">Confirm Delete</h4>
+            <p className="text-muted">Are you sure you want to delete <strong>{deleteModal.product?.name}</strong>?</p>
+            <p className="small text-danger">This action cannot be undone.</p>
+          </div>
+          <div className="d-flex gap-3 justify-content-center">
+            <button className="btn btn-light border fw-bold text-muted px-4 py-2" onClick={() => setDeleteModal({ show: false, product: null })}>Cancel</button>
+            <button className="btn btn-danger px-4 py-2 fw-bold d-flex align-items-center gap-2" onClick={handleDeleteConfirm}>
+              <FaTrash /> Delete Product
+            </button>
+          </div>
+        </div>
       </Modal>
-    </Container>
+    </div>
   );
 };
 

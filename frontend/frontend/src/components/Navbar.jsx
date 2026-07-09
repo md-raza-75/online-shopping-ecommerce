@@ -1,27 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Container, Nav, Navbar as BootstrapNavbar, NavDropdown, Badge, Button } from 'react-bootstrap';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  FaShoppingCart, 
-  FaUser, 
-  FaSignOutAlt, 
-  FaHome, 
-  FaBox, 
-  FaUserShield,
-  FaBars,
-  FaStore,
-  FaShoppingBag,
-  FaTag,
-  FaChartLine,
-  FaUsers
+  FaShoppingCart, FaUser, FaSignOutAlt, FaHome, FaBox, 
+  FaBars, FaStore, FaShoppingBag, FaTag, FaChartLine, FaUsers, FaTimes
 } from 'react-icons/fa';
+import './Navbar.css';
 
 const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [userInfo, setUserInfo] = useState(null);
-  const [cartItems, setCartItems] = useState([]);
   const [cartCount, setCartCount] = useState(0);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // Load initial data
   useEffect(() => {
@@ -31,20 +23,13 @@ const Navbar = () => {
 
   // Listen for events and location changes
   useEffect(() => {
-    const handleUserChange = () => {
-      loadUserInfo();
-    };
+    const handleUserChange = () => loadUserInfo();
+    const handleCartChange = () => loadCartItems();
 
-    const handleCartChange = () => {
-      loadCartItems();
-    };
-
-    // Add event listeners
     window.addEventListener('userLogin', handleUserChange);
     window.addEventListener('userLogout', handleUserChange);
     window.addEventListener('cartUpdated', handleCartChange);
     
-    // Also refresh on route change
     loadUserInfo();
     loadCartItems();
 
@@ -58,17 +43,12 @@ const Navbar = () => {
   const loadUserInfo = () => {
     try {
       const userData = localStorage.getItem('userInfo');
-      
       if (!userData || userData === 'undefined' || userData === 'null') {
         setUserInfo(null);
         return;
       }
-      
-      const user = JSON.parse(userData);
-      console.log('Navbar - Loaded user:', user);
-      setUserInfo(user);
+      setUserInfo(JSON.parse(userData));
     } catch (error) {
-      console.error('Error loading user info:', error);
       setUserInfo(null);
       localStorage.removeItem('userInfo');
     }
@@ -77,21 +57,13 @@ const Navbar = () => {
   const loadCartItems = () => {
     try {
       const cartData = localStorage.getItem('cartItems');
-      
       if (!cartData || cartData === 'undefined' || cartData === 'null') {
-        setCartItems([]);
         setCartCount(0);
         return;
       }
-      
       const cart = JSON.parse(cartData);
-      setCartItems(cart);
-      
-      const count = cart.reduce((total, item) => total + (item.quantity || 1), 0);
-      setCartCount(count);
+      setCartCount(cart.reduce((total, item) => total + (item.quantity || 1), 0));
     } catch (error) {
-      console.error('Error loading cart items:', error);
-      setCartItems([]);
       setCartCount(0);
       localStorage.removeItem('cartItems');
     }
@@ -102,186 +74,165 @@ const Navbar = () => {
     localStorage.removeItem('cartItems');
     localStorage.removeItem('appliedCoupon');
     localStorage.removeItem('checkoutCoupon');
-    
     setUserInfo(null);
-    setCartItems([]);
     setCartCount(0);
-    
     window.dispatchEvent(new Event('userLogout'));
     window.dispatchEvent(new Event('cartUpdated'));
-    
     navigate('/login');
   };
 
-  const isActive = (path) => {
-    return location.pathname === path;
-  };
+  const isActive = (path) => location.pathname === path;
 
   return (
-    <BootstrapNavbar bg="primary" variant="dark" expand="lg" className="shadow-sm py-3 sticky-top">
-      <Container>
-        <BootstrapNavbar.Brand as={Link} to="/" className="fw-bold fs-3">
-          <FaStore className="me-2" />
-          ShopEasy
-        </BootstrapNavbar.Brand>
+    <motion.nav 
+      initial={{ y: -100 }}
+      animate={{ y: 0 }}
+      transition={{ type: 'spring', stiffness: 100, damping: 20 }}
+      className="premium-navbar glass-panel sticky-top"
+    >
+      <div className="navbar-container">
+        <Link to="/" className="navbar-brand gradient-text">
+          <FaStore className="me-2" /> ShopEasy
+        </Link>
         
-        <BootstrapNavbar.Toggle aria-controls="navbar-nav">
-          <FaBars />
-        </BootstrapNavbar.Toggle>
-        
-        <BootstrapNavbar.Collapse id="navbar-nav">
-          <Nav className="me-auto">
-            <Nav.Link 
-              as={Link} 
-              to="/" 
-              className={`mx-2 ${isActive('/') ? 'active fw-bold' : ''}`}
+        {/* Desktop Menu */}
+        <div className="navbar-menu d-none d-lg-flex">
+          <Link to="/" className={`nav-link ${isActive('/') ? 'active' : ''}`}>
+            <FaHome className="nav-icon" /> Home
+          </Link>
+          <Link to="/products" className={`nav-link ${isActive('/products') ? 'active' : ''}`}>
+            <FaShoppingBag className="nav-icon" /> Products
+          </Link>
+        </div>
+
+        <div className="navbar-actions d-none d-lg-flex">
+          <Link to="/cart" className={`nav-link cart-link ${isActive('/cart') ? 'active' : ''}`}>
+            <FaShoppingCart className="nav-icon" />
+            <span>Cart</span>
+            {cartCount > 0 && (
+              <motion.span 
+                initial={{ scale: 0 }} 
+                animate={{ scale: 1 }} 
+                className="cart-badge"
+              >
+                {cartCount > 99 ? '99+' : cartCount}
+              </motion.span>
+            )}
+          </Link>
+
+          {userInfo ? (
+            <div 
+              className="user-dropdown-container"
+              onMouseEnter={() => setIsDropdownOpen(true)}
+              onMouseLeave={() => setIsDropdownOpen(false)}
             >
-              <FaHome className="me-1" />
-              Home
-            </Nav.Link>
+              <div className="user-trigger">
+                <FaUser className="me-2" />
+                <span>{userInfo.name?.split(' ')[0]}</span>
+                {userInfo.role === 'admin' && <span className="premium-badge badge-danger ms-2">Admin</span>}
+              </div>
+
+              <AnimatePresence>
+                {isDropdownOpen && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    transition={{ duration: 0.2 }}
+                    className="dropdown-menu-glass"
+                  >
+                    <div className="dropdown-header">
+                      <small>Signed in as</small>
+                      <strong>{userInfo.name}</strong>
+                      <small className="text-muted">{userInfo.email}</small>
+                    </div>
+                    <div className="dropdown-divider"></div>
+                    <Link to="/profile" className="dropdown-item"><FaUser /> My Profile</Link>
+                    <Link to="/orders" className="dropdown-item"><FaBox /> My Orders</Link>
+                    
+                    {userInfo.role === 'admin' && (
+                      <>
+                        <div className="dropdown-divider"></div>
+                        <div className="dropdown-header premium-text">Admin Panel</div>
+                        <Link to="/admin" className="dropdown-item"><FaChartLine /> Dashboard</Link>
+                        <Link to="/admin/products" className="dropdown-item"><FaShoppingBag /> Products</Link>
+                        <Link to="/admin/orders" className="dropdown-item"><FaBox /> Orders</Link>
+                        <Link to="/admin/coupons" className="dropdown-item"><FaTag /> Coupons</Link>
+                        <Link to="/admin/users" className="dropdown-item"><FaUsers /> Users</Link>
+                      </>
+                    )}
+                    <div className="dropdown-divider"></div>
+                    <button onClick={logoutHandler} className="dropdown-item text-danger w-100 text-start">
+                      <FaSignOutAlt /> Logout
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          ) : (
+            <div className="auth-buttons">
+              <Link to="/login" className="btn-premium-outline btn-sm">Login</Link>
+              <Link to="/register" className="btn-premium btn-sm">Register</Link>
+            </div>
+          )}
+        </div>
+
+        {/* Mobile Toggle */}
+        <button 
+          className="mobile-toggle d-lg-none"
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        >
+          {isMobileMenuOpen ? <FaTimes /> : <FaBars />}
+        </button>
+      </div>
+
+      {/* Mobile Menu */}
+      <AnimatePresence>
+        {isMobileMenuOpen && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="mobile-menu d-lg-none"
+          >
+            <Link to="/" className="mobile-link" onClick={() => setIsMobileMenuOpen(false)}>Home</Link>
+            <Link to="/products" className="mobile-link" onClick={() => setIsMobileMenuOpen(false)}>Products</Link>
+            <Link to="/cart" className="mobile-link" onClick={() => setIsMobileMenuOpen(false)}>
+              Cart {cartCount > 0 && <span className="mobile-badge">{cartCount}</span>}
+            </Link>
             
-            <Nav.Link 
-              as={Link} 
-              to="/products" 
-              className={`mx-2 ${isActive('/products') ? 'active fw-bold' : ''}`}
-            >
-              <FaShoppingBag className="me-1" />
-              Products
-            </Nav.Link>
-          </Nav>
-          
-          <Nav className="ms-auto align-items-center">
-            {/* Cart with Badge */}
-            <Nav.Link 
-              as={Link} 
-              to="/cart" 
-              className={`position-relative mx-3 ${isActive('/cart') ? 'active fw-bold' : ''}`}
-            >
-              <FaShoppingCart className="fs-5" />
-              {cartCount > 0 && (
-                <Badge 
-                  pill 
-                  bg="danger" 
-                  className="position-absolute top-0 start-100 translate-middle"
-                  style={{ 
-                    fontSize: '0.7rem',
-                    minWidth: '20px',
-                    height: '20px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  {cartCount > 99 ? '99+' : cartCount}
-                </Badge>
-              )}
-              <span className="ms-2 d-none d-lg-inline">Cart</span>
-            </Nav.Link>
-            
-            {/* User Authentication */}
             {userInfo ? (
               <>
-                {/* Welcome message for large screens */}
-                <div className="d-none d-lg-block text-white mx-3">
-                  Welcome, <strong>{userInfo.name?.split(' ')[0]}</strong>
-                  {userInfo.role === 'admin' && (
-                    <Badge bg="danger" className="ms-2" pill>Admin</Badge>
-                  )}
-                </div>
+                <div className="mobile-divider"></div>
+                <div className="mobile-header">Profile</div>
+                <Link to="/profile" className="mobile-link" onClick={() => setIsMobileMenuOpen(false)}>My Profile</Link>
+                <Link to="/orders" className="mobile-link" onClick={() => setIsMobileMenuOpen(false)}>My Orders</Link>
                 
-                {/* User Dropdown */}
-                <NavDropdown 
-                  title={
-                    <span className="d-flex align-items-center">
-                      <FaUser className="me-2" />
-                      <span className="d-lg-none">
-                        {userInfo.name?.split(' ')[0]}
-                        {userInfo.role === 'admin' && (
-                          <Badge bg="danger" className="ms-2" pill>A</Badge>
-                        )}
-                      </span>
-                    </span>
-                  } 
-                  id="user-dropdown"
-                  align="end"
-                  className="mx-2"
-                >
-                  {/* User Info */}
-                  <div className="px-3 py-2 border-bottom">
-                    <small className="text-muted d-block">Signed in as</small>
-                    <div className="fw-bold">{userInfo.name}</div>
-                    <small className="text-muted">{userInfo.email}</small>
-                    {userInfo.role === 'admin' && (
-                      <Badge bg="danger" className="mt-1">Administrator</Badge>
-                    )}
-                  </div>
-                  
-                  {/* User Links */}
-                  <NavDropdown.Item as={Link} to="/profile" className="py-2">
-                    <FaUser className="me-2" /> My Profile
-                  </NavDropdown.Item>
-                  
-                  <NavDropdown.Item as={Link} to="/orders" className="py-2">
-                    <FaBox className="me-2" /> My Orders
-                  </NavDropdown.Item>
-                  
-                  {/* ✅ ADMIN LINKS */}
-                  {userInfo.role === 'admin' && (
-                    <>
-                      <NavDropdown.Divider />
-                      <NavDropdown.Header className="fw-bold text-primary">
-                        Admin Panel
-                      </NavDropdown.Header>
-                      <NavDropdown.Item as={Link} to="/admin" className="py-2">
-                        <FaChartLine className="me-2" /> Dashboard
-                      </NavDropdown.Item>
-                      <NavDropdown.Item as={Link} to="/admin/products" className="py-2">
-                        <FaShoppingBag className="me-2" /> Products
-                      </NavDropdown.Item>
-                      <NavDropdown.Item as={Link} to="/admin/orders" className="py-2">
-                        <FaBox className="me-2" /> Orders
-                      </NavDropdown.Item>
-                      {/* ✅ ADD COUPON LINK */}
-                      <NavDropdown.Item as={Link} to="/admin/coupons" className="py-2">
-                        <FaTag className="me-2" /> Manage Coupons
-                      </NavDropdown.Item>
-                      <NavDropdown.Item as={Link} to="/admin/users" className="py-2">
-                        <FaUsers className="me-2" /> Users
-                      </NavDropdown.Item>
-                    </>
-                  )}
-                  
-                  <NavDropdown.Divider />
-                  <NavDropdown.Item onClick={logoutHandler} className="py-2 text-danger">
-                    <FaSignOutAlt className="me-2" /> Logout
-                  </NavDropdown.Item>
-                </NavDropdown>
+                {userInfo.role === 'admin' && (
+                  <>
+                    <div className="mobile-divider"></div>
+                    <div className="mobile-header">Admin</div>
+                    <Link to="/admin" className="mobile-link" onClick={() => setIsMobileMenuOpen(false)}>Dashboard</Link>
+                    <Link to="/admin/products" className="mobile-link" onClick={() => setIsMobileMenuOpen(false)}>Products</Link>
+                    <Link to="/admin/orders" className="mobile-link" onClick={() => setIsMobileMenuOpen(false)}>Orders</Link>
+                    <Link to="/admin/coupons" className="mobile-link" onClick={() => setIsMobileMenuOpen(false)}>Coupons</Link>
+                  </>
+                )}
+                <div className="mobile-divider"></div>
+                <button onClick={() => { logoutHandler(); setIsMobileMenuOpen(false); }} className="mobile-link text-danger text-start w-100">
+                  Logout
+                </button>
               </>
             ) : (
-              <>
-                {/* Login Button */}
-                <Nav.Link as={Link} to="/login" className="mx-2">
-                  <Button 
-                    variant="outline-light" 
-                    size="sm" 
-                    className="px-3"
-                  >
-                    <FaUser className="me-2" /> Login
-                  </Button>
-                </Nav.Link>
-                
-                {/* Register Button */}
-                <Nav.Link as={Link} to="/register" className="mx-2">
-                  <Button variant="light" size="sm" className="px-3 fw-bold">
-                    Register
-                  </Button>
-                </Nav.Link>
-              </>
+              <div className="mobile-auth p-3">
+                <Link to="/login" className="btn-premium-outline w-100 mb-2" onClick={() => setIsMobileMenuOpen(false)}>Login</Link>
+                <Link to="/register" className="btn-premium w-100" onClick={() => setIsMobileMenuOpen(false)}>Register</Link>
+              </div>
             )}
-          </Nav>
-        </BootstrapNavbar.Collapse>
-      </Container>
-    </BootstrapNavbar>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.nav>
   );
 };
 

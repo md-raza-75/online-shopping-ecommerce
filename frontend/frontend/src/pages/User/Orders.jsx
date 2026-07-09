@@ -1,15 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Container, Table, Button, Badge, Card, Alert, 
-  Row, Col, Modal, Spinner, Dropdown 
-} from 'react-bootstrap';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Modal } from 'react-bootstrap';
 import { 
   FaShoppingBag, FaEye, FaRupeeSign, FaCalendarAlt, 
   FaTruck, FaCheckCircle, FaTimesCircle, FaClock, 
-  FaBox, FaDownload, FaFilePdf, FaEllipsisV, FaPrint 
+  FaBox, FaDownload, FaFilePdf, FaTimes
 } from 'react-icons/fa';
 import { toast } from 'react-toastify';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { getMyOrders, downloadInvoice } from '../../services/api';
 import Loader, { PageLoader } from '../../components/Loader';
 
@@ -33,12 +31,10 @@ const Orders = () => {
         navigate('/login');
         return;
       }
-
       const data = await getMyOrders();
       setOrders(data.data || data);
       setLoading(false);
     } catch (err) {
-      console.error('Error fetching orders:', err);
       setError('Failed to load orders. Please try again.');
       setLoading(false);
       toast.error('Unable to load orders');
@@ -47,96 +43,63 @@ const Orders = () => {
 
   const getStatusBadge = (status) => {
     const statusConfig = {
-      'pending': { variant: 'warning', icon: <FaClock />, text: 'Pending' },
-      'confirmed': { variant: 'info', icon: <FaCheckCircle />, text: 'Confirmed' },
-      'processing': { variant: 'info', icon: <FaBox />, text: 'Processing' },
-      'shipped': { variant: 'primary', icon: <FaTruck />, text: 'Shipped' },
-      'delivered': { variant: 'success', icon: <FaCheckCircle />, text: 'Delivered' },
-      'cancelled': { variant: 'danger', icon: <FaTimesCircle />, text: 'Cancelled' }
+      'pending': { variant: 'badge-warning', icon: <FaClock />, text: 'Pending' },
+      'confirmed': { variant: 'badge-info', icon: <FaCheckCircle />, text: 'Confirmed' },
+      'processing': { variant: 'badge-info', icon: <FaBox />, text: 'Processing' },
+      'shipped': { variant: 'badge-primary', icon: <FaTruck />, text: 'Shipped' },
+      'delivered': { variant: 'badge-success', icon: <FaCheckCircle />, text: 'Delivered' },
+      'cancelled': { variant: 'badge-danger', icon: <FaTimesCircle />, text: 'Cancelled' }
     };
-    
     const config = statusConfig[status?.toLowerCase()] || statusConfig.pending;
     return (
-      <Badge bg={config.variant} className="d-flex align-items-center gap-1 py-2 px-3">
-        {config.icon}
-        {config.text}
-      </Badge>
+      <span className={`premium-badge ${config.variant} px-3 py-2 d-inline-flex align-items-center gap-2`}>
+        {config.icon} {config.text}
+      </span>
     );
   };
 
   const getPaymentBadge = (status, method, orderStatus) => {
-    // ✅ IMPORTANT FIX: If order is delivered and payment method is COD, show "Paid"
     if (orderStatus === 'delivered' && method === 'COD') {
-      return <Badge bg="success" className="py-2 px-3">✅ Paid (on Delivery)</Badge>;
+      return <span className="premium-badge badge-success px-3 py-2">✅ Paid (on Delivery)</span>;
     }
-    
     if (status === 'completed') {
-      return <Badge bg="success" className="py-2 px-3">✅ Paid</Badge>;
+      return <span className="premium-badge badge-success px-3 py-2">✅ Paid</span>;
     } else if (status === 'failed') {
-      return <Badge bg="danger" className="py-2 px-3">❌ Failed</Badge>;
+      return <span className="premium-badge badge-danger px-3 py-2">❌ Failed</span>;
     } else if (method === 'COD') {
-      return <Badge bg="info" className="py-2 px-3">💵 Cash on Delivery</Badge>;
+      return <span className="premium-badge badge-info px-3 py-2">💵 Cash on Delivery</span>;
     } else {
-      return <Badge bg="warning" className="py-2 px-3">⏳ Pending</Badge>;
+      return <span className="premium-badge badge-warning px-3 py-2">⏳ Pending</span>;
     }
   };
 
-  // ✅ IMPORTANT FIX: Determine if invoice can be downloaded
   const canDownloadInvoice = (order) => {
-    // Admin ne paid mark kiya ho
-    if (order.paymentStatus === 'completed') {
-      return true;
-    }
-    // COD order delivered ho (payment auto-completed)
-    if (order.paymentMethod === 'COD' && order.orderStatus === 'delivered') {
-      return true;
-    }
-    // Admin ho (admin sab download kar sakta hai)
+    if (order.paymentStatus === 'completed') return true;
+    if (order.paymentMethod === 'COD' && order.orderStatus === 'delivered') return true;
     const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
-    if (userInfo.role === 'admin') {
-      return true;
-    }
+    if (userInfo.role === 'admin') return true;
     return false;
   };
 
   const handleDownloadInvoice = async (orderId, e) => {
     if (e) e.stopPropagation();
-    
     try {
       setDownloadingId(orderId);
-      
       const response = await downloadInvoice(orderId);
-      
-      // Create blob from response
       const blob = response.data;
-      
-      // Get order for filename
       const order = orders.find(o => o._id === orderId);
       const invoiceNumber = order?.invoice?.invoiceNumber || `INV-${orderId.slice(-6)}`;
       const fileName = `ShopEasy-Invoice-${invoiceNumber}.pdf`;
-      
-      // Create download link
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
-      
       link.href = url;
       link.download = fileName;
       link.style.display = 'none';
-      
       document.body.appendChild(link);
       link.click();
-      
-      // Cleanup
-      setTimeout(() => {
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-      }, 100);
-      
+      setTimeout(() => { document.body.removeChild(link); window.URL.revokeObjectURL(url); }, 100);
       toast.success('✅ Invoice downloaded successfully!');
-      
     } catch (error) {
-      console.error('Download error:', error);
-      
       if (error.message?.includes('payment is completed') || error.message?.includes('will be available')) {
         toast.info('📄 Invoice will be available after payment is completed');
       } else if (error.message?.includes('Access denied')) {
@@ -154,403 +117,354 @@ const Orders = () => {
     }
   };
 
-  const viewOrderDetails = (order) => {
-    setSelectedOrder(order);
-    setShowDetails(true);
-  };
-
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric'
-    });
+    return new Date(dateString).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
   const formatCurrency = (amount) => {
     if (!amount) return '₹0';
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 0
-    }).format(amount);
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(amount);
   };
 
   if (loading) return <PageLoader />;
 
   return (
-    <Container className="py-5">
-      <div className="d-flex justify-content-between align-items-center mb-4">
+    <div className="container py-5">
+      <motion.div 
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="d-flex flex-wrap justify-content-between align-items-center mb-5"
+      >
         <div>
-          <h1 className="h3 fw-bold">
-            <FaShoppingBag className="me-2" />
-            My Orders
+          <h1 className="h2 fw-bold gradient-text d-flex align-items-center gap-3">
+            <FaShoppingBag /> My Orders
           </h1>
-          <p className="text-muted mb-0">View and manage all your orders</p>
+          <p className="text-muted mb-0">View and manage all your recent orders</p>
         </div>
-        <Badge bg="primary" pill className="fs-6 px-3 py-2">
-          {orders.length} {orders.length === 1 ? 'Order' : 'Orders'}
-        </Badge>
-      </div>
+        <div className="premium-badge badge-primary px-4 py-2 fs-5 mt-3 mt-md-0">
+          {orders.length} {orders.length === 1 ? 'Order' : 'Orders'} Total
+        </div>
+      </motion.div>
 
       {error ? (
-        <Alert variant="danger">
-          <Alert.Heading>Error Loading Orders</Alert.Heading>
+        <div className="alert alert-danger d-inline-block rounded-4 p-4 shadow-sm text-center w-100">
+          <h4 className="fw-bold">Error Loading Orders</h4>
           <p>{error}</p>
-          <Button variant="outline-danger" onClick={fetchOrders}>
-            Try Again
-          </Button>
-        </Alert>
+          <button className="btn-premium mt-2" onClick={fetchOrders}>Try Again</button>
+        </div>
       ) : orders.length === 0 ? (
-        <Card className="text-center py-5 shadow-sm border-0">
-          <Card.Body>
-            <div className="mb-4">
-              <FaShoppingBag size={80} className="text-muted opacity-50" />
-            </div>
-            <h4 className="mb-3">No Orders Yet</h4>
-            <p className="text-muted mb-4">
-              You haven't placed any orders yet. Start shopping to see your orders here.
-            </p>
-            <Button variant="primary" size="lg" onClick={() => navigate('/')}>
-              Start Shopping
-            </Button>
-          </Card.Body>
-        </Card>
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="glass-card text-center py-5 shadow-sm"
+        >
+          <div className="mb-4">
+            <FaShoppingBag size={80} className="text-muted opacity-50" />
+          </div>
+          <h3 className="fw-bold text-dark mb-3">No Orders Yet</h3>
+          <p className="text-muted mb-4 lead mx-auto" style={{ maxWidth: '500px' }}>
+            Looks like you haven't placed any orders yet. Explore our premium collection and treat yourself today!
+          </p>
+          <Link to="/" className="btn-premium px-5 py-3 d-inline-block text-decoration-none">Start Shopping</Link>
+        </motion.div>
       ) : (
-        <Card className="shadow-sm border-0 overflow-hidden">
-          <Card.Body className="p-0">
-            <div className="table-responsive">
-              <Table hover className="mb-0 align-middle">
-                <thead className="bg-light">
-                  <tr>
-                    <th className="ps-4 py-3">Order ID</th>
-                    <th className="py-3">Date</th>
-                    <th className="py-3">Items</th>
-                    <th className="py-3">Total</th>
-                    <th className="py-3">Status</th>
-                    <th className="py-3">Payment</th>
-                    <th className="pe-4 py-3 text-end">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {orders.map((order) => (
-                    <tr 
-                      key={order._id} 
-                      style={{ cursor: 'pointer' }} 
-                      onClick={() => viewOrderDetails(order)}
-                      className="border-bottom"
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-panel overflow-hidden"
+        >
+          <div className="table-responsive">
+            <table className="table table-hover table-premium mb-0 align-middle">
+              <thead className="bg-light">
+                <tr>
+                  <th className="ps-4 py-4 text-muted fw-bold">Order ID</th>
+                  <th className="py-4 text-muted fw-bold">Date</th>
+                  <th className="py-4 text-muted fw-bold">Items</th>
+                  <th className="py-4 text-muted fw-bold">Total</th>
+                  <th className="py-4 text-muted fw-bold">Status</th>
+                  <th className="py-4 text-muted fw-bold">Payment</th>
+                  <th className="pe-4 py-4 text-end text-muted fw-bold">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <AnimatePresence>
+                  {orders.map((order, index) => (
+                    <motion.tr 
+                      key={order._id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                      onClick={() => { setSelectedOrder(order); setShowDetails(true); }}
+                      style={{ cursor: 'pointer' }}
                     >
-                      <td className="ps-4 py-3">
-                        <div>
-                          <small className="text-muted d-block">Order</small>
-                          <strong className="text-primary">#{order._id?.slice(-8)?.toUpperCase() || 'N/A'}</strong>
+                      <td className="ps-4 py-4">
+                        <small className="text-muted d-block fw-bold text-uppercase">Order</small>
+                        <strong className="text-primary">#{order._id?.slice(-8)?.toUpperCase()}</strong>
+                      </td>
+                      <td className="py-4">
+                        <div className="d-flex align-items-center fw-bold text-dark">
+                          <FaCalendarAlt className="me-2 text-muted" /> {formatDate(order.createdAt)}
                         </div>
                       </td>
-                      <td className="py-3">
-                        <div className="d-flex align-items-center">
-                          <FaCalendarAlt className="me-2 text-muted" size={14} />
-                          {formatDate(order.createdAt)}
+                      <td className="py-4">
+                        <div className="d-flex align-items-center fw-bold text-dark">
+                          <FaBox className="me-2 text-muted" /> {order.items?.length || 0} items
                         </div>
                       </td>
-                      <td className="py-3">
-                        <div className="d-flex align-items-center">
-                          <FaBox className="me-2 text-muted" size={14} />
-                          <span className="fw-medium">{order.items?.length || 0} items</span>
+                      <td className="py-4">
+                        <div className="d-flex align-items-center fw-bold text-dark">
+                          <FaRupeeSign className="me-1 text-muted" /> {formatCurrency(order.totalAmount)}
                         </div>
                       </td>
-                      <td className="py-3">
-                        <div className="d-flex align-items-center fw-bold">
-                          <FaRupeeSign className="me-1" size={12} />
-                          {formatCurrency(order.totalAmount)}
-                        </div>
-                      </td>
-                      <td className="py-3">{getStatusBadge(order.orderStatus)}</td>
-                      <td className="py-3">
-                        <div className="d-flex flex-column gap-1">
+                      <td className="py-4">{getStatusBadge(order.orderStatus)}</td>
+                      <td className="py-4">
+                        <div className="d-flex flex-column gap-2 align-items-start">
                           {getPaymentBadge(order.paymentStatus, order.paymentMethod, order.orderStatus)}
-                          <small className="text-muted">
+                          <small className="text-muted fw-bold">
                             {order.paymentMethod === 'COD' ? 'Pay on delivery' : 'Online'}
                           </small>
                         </div>
                       </td>
-                      <td className="pe-4 py-3 text-end">
+                      <td className="pe-4 py-4 text-end">
                         <div className="d-flex justify-content-end gap-2" onClick={(e) => e.stopPropagation()}>
-                          <Button
-                            variant="outline-primary"
-                            size="sm"
-                            onClick={() => viewOrderDetails(order)}
-                            className="d-flex align-items-center gap-2"
+                          <button
+                            className="btn btn-light rounded-circle shadow-sm d-flex align-items-center justify-content-center text-primary"
+                            style={{ width: '40px', height: '40px' }}
+                            onClick={() => { setSelectedOrder(order); setShowDetails(true); }}
                             title="View Details"
                           >
-                            <FaEye size={12} />
-                            <span className="d-none d-md-inline">View</span>
-                          </Button>
+                            <FaEye size={16} />
+                          </button>
                           
-                          {/* ✅ FIXED: Show download button for delivered COD orders OR paid orders */}
                           {canDownloadInvoice(order) && (
-                            <Button
-                              variant="outline-success"
-                              size="sm"
+                            <button
+                              className="btn btn-light rounded-circle shadow-sm d-flex align-items-center justify-content-center text-success"
+                              style={{ width: '40px', height: '40px' }}
                               onClick={(e) => handleDownloadInvoice(order._id, e)}
                               disabled={downloadingId === order._id}
-                              className="d-flex align-items-center gap-2"
                               title="Download Invoice"
                             >
                               {downloadingId === order._id ? (
-                                <>
-                                  <Spinner size="sm" animation="border" />
-                                  <span className="d-none d-md-inline">Downloading...</span>
-                                </>
+                                <span className="spinner-border spinner-border-sm"></span>
                               ) : (
-                                <>
-                                  <FaDownload size={12} />
-                                  <span className="d-none d-md-inline">Invoice</span>
-                                </>
+                                <FaDownload size={16} />
                               )}
-                            </Button>
+                            </button>
                           )}
                         </div>
                       </td>
-                    </tr>
+                    </motion.tr>
                   ))}
-                </tbody>
-              </Table>
-            </div>
-          </Card.Body>
-        </Card>
+                </AnimatePresence>
+              </tbody>
+            </table>
+          </div>
+        </motion.div>
       )}
 
       {/* Order Details Modal */}
-      <Modal show={showDetails} onHide={() => setShowDetails(false)} size="lg" centered scrollable>
+      <Modal show={showDetails} onHide={() => setShowDetails(false)} size="lg" centered>
         {selectedOrder && (
-          <>
-            <Modal.Header closeButton className="border-0 pb-0">
-              <Modal.Title className="fw-bold">
-                <FaShoppingBag className="me-2" />
-                Order Details
-              </Modal.Title>
-            </Modal.Header>
-            <Modal.Body className="pt-0">
-              {/* Order Info */}
-              <Row className="mb-4">
-                <Col md={6}>
-                  <div className="mb-3">
-                    <small className="text-muted d-block">Order ID</small>
-                    <strong className="text-primary">#{selectedOrder._id?.slice(-8)?.toUpperCase()}</strong>
-                  </div>
-                  <div className="mb-3">
-                    <small className="text-muted d-block">Order Date</small>
-                    <strong>{formatDate(selectedOrder.createdAt)}</strong>
-                  </div>
-                  {selectedOrder.invoice?.invoiceNumber && (
-                    <div className="mb-3">
-                      <small className="text-muted d-block">Invoice Number</small>
-                      <strong>{selectedOrder.invoice.invoiceNumber}</strong>
+          <div className="glass-card border-0 overflow-hidden" style={{ borderRadius: '20px' }}>
+            <div className="d-flex justify-content-between align-items-center p-4 border-bottom bg-light">
+              <h4 className="fw-bold m-0 d-flex align-items-center gap-2">
+                <FaShoppingBag className="text-primary" /> Order Details
+              </h4>
+              <button className="btn btn-light rounded-circle p-2" onClick={() => setShowDetails(false)}>
+                <FaTimes />
+              </button>
+            </div>
+            
+            <div className="p-4" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+              <div className="row g-4 mb-4">
+                <div className="col-md-6">
+                  <div className="p-4 bg-light rounded-4 border h-100">
+                    <h6 className="fw-bold text-muted mb-3 text-uppercase">Order Info</h6>
+                    <div className="d-flex justify-content-between mb-2">
+                      <span className="text-muted">Order ID:</span>
+                      <strong className="text-dark">#{selectedOrder._id?.slice(-8)?.toUpperCase()}</strong>
                     </div>
-                  )}
-                </Col>
-                <Col md={6}>
-                  <div className="mb-3">
-                    <small className="text-muted d-block">Order Status</small>
-                    <div className="mt-1">{getStatusBadge(selectedOrder.orderStatus)}</div>
-                  </div>
-                  <div className="mb-3">
-                    <small className="text-muted d-block">Payment Status</small>
-                    <div className="mt-1">{getPaymentBadge(selectedOrder.paymentStatus, selectedOrder.paymentMethod, selectedOrder.orderStatus)}</div>
-                  </div>
-                  {selectedOrder.deliveredAt && (
-                    <div className="mb-3">
-                      <small className="text-muted d-block">Delivered On</small>
-                      <strong>{formatDate(selectedOrder.deliveredAt)}</strong>
+                    <div className="d-flex justify-content-between mb-2">
+                      <span className="text-muted">Date:</span>
+                      <strong className="text-dark">{formatDate(selectedOrder.createdAt)}</strong>
                     </div>
-                  )}
-                </Col>
-              </Row>
+                    {selectedOrder.invoice?.invoiceNumber && (
+                      <div className="d-flex justify-content-between">
+                        <span className="text-muted">Invoice:</span>
+                        <strong className="text-dark">{selectedOrder.invoice.invoiceNumber}</strong>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="col-md-6">
+                  <div className="p-4 bg-light rounded-4 border h-100">
+                    <h6 className="fw-bold text-muted mb-3 text-uppercase">Status</h6>
+                    <div className="mb-3 d-flex align-items-center justify-content-between">
+                      <span className="text-muted">Order:</span>
+                      {getStatusBadge(selectedOrder.orderStatus)}
+                    </div>
+                    <div className="d-flex align-items-center justify-content-between">
+                      <span className="text-muted">Payment:</span>
+                      {getPaymentBadge(selectedOrder.paymentStatus, selectedOrder.paymentMethod, selectedOrder.orderStatus)}
+                    </div>
+                    {selectedOrder.deliveredAt && (
+                      <div className="d-flex justify-content-between mt-3 pt-3 border-top">
+                        <span className="text-muted">Delivered On:</span>
+                        <strong className="text-dark">{formatDate(selectedOrder.deliveredAt)}</strong>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
 
-              <hr className="my-4" />
-
-              {/* Order Items */}
-              <h6 className="mb-3 fw-bold">📦 Order Items</h6>
-              <div className="table-responsive mb-4">
-                <Table size="sm" className="table-hover">
+              <h5 className="fw-bold mb-3 d-flex align-items-center gap-2"><FaBox className="text-muted" /> Order Items</h5>
+              <div className="table-responsive mb-4 rounded-4 border overflow-hidden">
+                <table className="table table-hover mb-0">
                   <thead className="bg-light">
                     <tr>
-                      <th>Product</th>
-                      <th className="text-center">Quantity</th>
-                      <th className="text-end">Price</th>
-                      <th className="text-end">Total</th>
+                      <th className="py-3 px-4">Product</th>
+                      <th className="py-3 text-center">Qty</th>
+                      <th className="py-3 text-end">Price</th>
+                      <th className="py-3 px-4 text-end">Total</th>
                     </tr>
                   </thead>
                   <tbody>
                     {selectedOrder.items?.map((item, index) => (
                       <tr key={index}>
-                        <td>
-                          <div className="d-flex align-items-center">
+                        <td className="py-3 px-4">
+                          <div className="d-flex align-items-center gap-3">
                             {item.image && (
-                              <img 
-                                src={item.image} 
-                                alt={item.name}
-                                style={{ width: '40px', height: '40px', objectFit: 'cover' }}
-                                className="rounded me-2"
-                              />
+                              <img src={item.image} alt={item.name} className="rounded" style={{ width: '48px', height: '48px', objectFit: 'cover' }} />
                             )}
-                            <span>{item.name}</span>
+                            <span className="fw-bold">{item.name}</span>
                           </div>
                         </td>
-                        <td className="text-center align-middle">{item.quantity}</td>
-                        <td className="text-end align-middle">{formatCurrency(item.price)}</td>
-                        <td className="text-end align-middle fw-bold">
+                        <td className="py-3 text-center align-middle fw-bold">{item.quantity}</td>
+                        <td className="py-3 text-end align-middle text-muted">{formatCurrency(item.price)}</td>
+                        <td className="py-3 px-4 text-end align-middle fw-bold text-primary">
                           {formatCurrency(item.price * item.quantity)}
                         </td>
                       </tr>
                     ))}
                   </tbody>
-                </Table>
+                </table>
               </div>
 
-              {/* Order Summary */}
-              <Row>
-                <Col md={6}>
-                  <h6 className="mb-3 fw-bold">🏠 Shipping Address</h6>
-                  <Card className="bg-light border-0">
-                    <Card.Body className="p-3">
-                      <p className="mb-1 fw-medium">{selectedOrder.shippingAddress?.name}</p>
-                      <p className="mb-1">{selectedOrder.shippingAddress?.address}</p>
-                      <p className="mb-1">
-                        {selectedOrder.shippingAddress?.city}, {selectedOrder.shippingAddress?.state} - {selectedOrder.shippingAddress?.postalCode}
+              <div className="row g-4">
+                <div className="col-md-6">
+                  <div className="p-4 bg-light rounded-4 border h-100">
+                    <h6 className="fw-bold mb-3 text-uppercase text-muted">Shipping Address</h6>
+                    <p className="fw-bold text-dark mb-1">{selectedOrder.shippingAddress?.name}</p>
+                    <p className="text-muted mb-1">{selectedOrder.shippingAddress?.address}</p>
+                    <p className="text-muted mb-2">{selectedOrder.shippingAddress?.city}, {selectedOrder.shippingAddress?.state} - {selectedOrder.shippingAddress?.postalCode}</p>
+                    <p className="text-muted mb-3">{selectedOrder.shippingAddress?.country}</p>
+                    <div className="pt-3 border-top">
+                      <p className="mb-0 fw-bold d-flex align-items-center gap-2 text-dark">
+                        📞 {selectedOrder.shippingAddress?.phone}
                       </p>
-                      <p className="mb-0">{selectedOrder.shippingAddress?.country}</p>
-                      <hr className="my-2" />
-                      <p className="mb-0">
-                        📞 Phone: {selectedOrder.shippingAddress?.phone}
-                      </p>
-                    </Card.Body>
-                  </Card>
-                </Col>
-                <Col md={6}>
-                  <h6 className="mb-3 fw-bold">💰 Order Summary</h6>
-                  <Card className="border-0 bg-light">
-                    <Card.Body className="p-3">
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="col-md-6">
+                  <div className="p-4 rounded-4 border h-100" style={{ background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)' }}>
+                    <h6 className="fw-bold mb-3 text-uppercase text-muted">Order Summary</h6>
+                    <div className="d-flex justify-content-between mb-2">
+                      <span className="text-muted">Subtotal</span>
+                      <span className="fw-bold text-dark">{formatCurrency(selectedOrder.totalAmount)}</span>
+                    </div>
+                    {selectedOrder.taxAmount > 0 && (
                       <div className="d-flex justify-content-between mb-2">
-                        <span>Subtotal</span>
-                        <span>{formatCurrency(selectedOrder.totalAmount)}</span>
+                        <span className="text-muted">Tax (18% GST)</span>
+                        <span className="fw-bold text-dark">{formatCurrency(selectedOrder.taxAmount)}</span>
                       </div>
-                      
-                      {selectedOrder.taxAmount > 0 && (
-                        <div className="d-flex justify-content-between mb-2">
-                          <span>Tax (18% GST)</span>
-                          <span>{formatCurrency(selectedOrder.taxAmount)}</span>
-                        </div>
-                      )}
-                      
-                      <div className="d-flex justify-content-between mb-2">
-                        <span>Shipping</span>
-                        <span className={selectedOrder.shippingAmount === 0 ? "text-success fw-bold" : ""}>
-                          {selectedOrder.shippingAmount === 0 ? 'FREE' : formatCurrency(selectedOrder.shippingAmount)}
-                        </span>
+                    )}
+                    <div className="d-flex justify-content-between mb-2">
+                      <span className="text-muted">Shipping</span>
+                      <span className={selectedOrder.shippingAmount === 0 ? "text-success fw-bold" : "fw-bold text-dark"}>
+                        {selectedOrder.shippingAmount === 0 ? 'FREE' : formatCurrency(selectedOrder.shippingAmount)}
+                      </span>
+                    </div>
+                    {selectedOrder.discountAmount > 0 && (
+                      <div className="d-flex justify-content-between mb-3 text-success">
+                        <span>Discount</span>
+                        <span className="fw-bold">-{formatCurrency(selectedOrder.discountAmount)}</span>
                       </div>
-                      
-                      {selectedOrder.discountAmount > 0 && (
-                        <div className="d-flex justify-content-between mb-2 text-success">
-                          <span>Discount</span>
-                          <span>-{formatCurrency(selectedOrder.discountAmount)}</span>
-                        </div>
-                      )}
-                      
-                      <hr className="my-2" />
-                      <div className="d-flex justify-content-between align-items-center">
-                        <strong className="fs-5">Total Amount</strong>
-                        <strong className="fs-4 text-primary">
-                          {formatCurrency(
-                            (selectedOrder.totalAmount || 0) + 
-                            (selectedOrder.taxAmount || 0) + 
-                            (selectedOrder.shippingAmount || 0) - 
-                            (selectedOrder.discountAmount || 0)
-                          )}
-                        </strong>
-                      </div>
-                      
-                      <div className="mt-3 small text-muted">
-                        <p className="mb-1">
-                          <strong>Payment Method:</strong> {selectedOrder.paymentMethod}
-                        </p>
-                        <p className="mb-0">
-                          <strong>Payment Status:</strong> {selectedOrder.paymentStatus}
-                          {selectedOrder.orderStatus === 'delivered' && selectedOrder.paymentMethod === 'COD' && ' (Auto-paid on delivery)'}
-                        </p>
-                      </div>
-                    </Card.Body>
-                  </Card>
-                </Col>
-              </Row>
+                    )}
+                    
+                    <hr className="my-3 opacity-25" />
+                    
+                    <div className="d-flex justify-content-between align-items-center">
+                      <strong className="fs-5 text-dark">Total Amount</strong>
+                      <strong className="fs-4 gradient-text fw-bold">
+                        {formatCurrency(
+                          (selectedOrder.totalAmount || 0) + 
+                          (selectedOrder.taxAmount || 0) + 
+                          (selectedOrder.shippingAmount || 0) - 
+                          (selectedOrder.discountAmount || 0)
+                        )}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-              {/* Admin Notes */}
               {selectedOrder.adminNotes && (
-                <div className="mt-4">
-                  <h6 className="mb-2 fw-bold">📝 Admin Notes</h6>
-                  <Alert variant="info" className="mb-0">
-                    {selectedOrder.adminNotes}
-                  </Alert>
+                <div className="mt-4 p-4 rounded-4 bg-primary bg-opacity-10 border border-primary border-opacity-25">
+                  <h6 className="fw-bold text-primary mb-2 text-uppercase d-flex align-items-center gap-2">
+                    📝 Admin Notes
+                  </h6>
+                  <p className="mb-0 text-dark">{selectedOrder.adminNotes}</p>
                 </div>
               )}
 
-              {/* Tracking Info */}
               {(selectedOrder.trackingNumber || selectedOrder.courierName) && (
-                <div className="mt-4">
-                  <h6 className="mb-2 fw-bold">🚚 Tracking Information</h6>
-                  <Card className="border-0 bg-light">
-                    <Card.Body className="p-3">
-                      {selectedOrder.courierName && (
-                        <p className="mb-1">
-                          <strong>Courier:</strong> {selectedOrder.courierName}
-                        </p>
-                      )}
-                      {selectedOrder.trackingNumber && (
-                        <p className="mb-0">
-                          <strong>Tracking Number:</strong> {selectedOrder.trackingNumber}
-                        </p>
-                      )}
-                    </Card.Body>
-                  </Card>
+                <div className="mt-4 p-4 rounded-4 bg-light border">
+                  <h6 className="fw-bold mb-3 text-uppercase text-muted d-flex align-items-center gap-2">
+                    🚚 Tracking Information
+                  </h6>
+                  <div className="d-flex flex-wrap gap-4">
+                    {selectedOrder.courierName && (
+                      <div>
+                        <span className="text-muted d-block small mb-1">Courier</span>
+                        <strong className="text-dark">{selectedOrder.courierName}</strong>
+                      </div>
+                    )}
+                    {selectedOrder.trackingNumber && (
+                      <div>
+                        <span className="text-muted d-block small mb-1">Tracking Number</span>
+                        <strong className="text-dark">{selectedOrder.trackingNumber}</strong>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
-            </Modal.Body>
-            <Modal.Footer className="border-0">
-              <Button variant="outline-secondary" onClick={() => setShowDetails(false)}>
+            </div>
+
+            <div className="p-4 border-top bg-light d-flex justify-content-end gap-3">
+              <button className="btn btn-light border px-4 fw-bold text-muted" onClick={() => setShowDetails(false)}>
                 Close
-              </Button>
-              
-              {/* ✅ FIXED: Show download button if invoice can be downloaded */}
+              </button>
               {canDownloadInvoice(selectedOrder) && (
-                <Button 
-                  variant="primary" 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDownloadInvoice(selectedOrder._id, e);
-                  }}
+                <button 
+                  className="btn-premium px-4 py-2"
+                  onClick={(e) => handleDownloadInvoice(selectedOrder._id, e)}
                   disabled={downloadingId === selectedOrder._id}
-                  className="d-flex align-items-center gap-2"
                 >
                   {downloadingId === selectedOrder._id ? (
-                    <>
-                      <Spinner size="sm" animation="border" />
-                      Downloading...
-                    </>
+                    <><span className="spinner-border spinner-border-sm me-2"></span> Downloading...</>
                   ) : (
-                    <>
-                      <FaFilePdf />
-                      Download Invoice
-                    </>
+                    <><FaFilePdf className="me-2" /> Download Invoice</>
                   )}
-                </Button>
+                </button>
               )}
-            </Modal.Footer>
-          </>
+            </div>
+          </div>
         )}
       </Modal>
-    </Container>
+    </div>
   );
 };
 

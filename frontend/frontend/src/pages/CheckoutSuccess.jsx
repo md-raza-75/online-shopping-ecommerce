@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Container, Row, Col, Card, Button, Alert, Spinner, Badge } from 'react-bootstrap';
+import { motion } from 'framer-motion';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { FaCheckCircle, FaDownload, FaShoppingBag, FaHome, FaFilePdf, FaRupeeSign, FaTruck, FaEnvelope } from 'react-icons/fa';
+import { FaCheckCircle, FaDownload, FaShoppingBag, FaHome, FaFilePdf, FaRupeeSign, FaTruck, FaEnvelope, FaCreditCard } from 'react-icons/fa';
 import { toast } from 'react-toastify';
 import { getOrderById, downloadInvoice } from '../services/api';
+import { PageLoader } from '../components/Loader';
 
 const CheckoutSuccess = () => {
   const { orderId } = useParams();
@@ -15,12 +16,10 @@ const CheckoutSuccess = () => {
   const [downloading, setDownloading] = useState(false);
   const [hasAutoDownloaded, setHasAutoDownloaded] = useState(false);
   
-  // ✅ FIX: Use refs to track mounts and prevent re-renders
   const hasFetched = useRef(false);
   const hasAutoDownloadTriggered = useRef(false);
 
   useEffect(() => {
-    // ✅ FIX: Prevent multiple fetches
     if (hasFetched.current) return;
     
     const initializeOrder = async () => {
@@ -37,23 +36,15 @@ const CheckoutSuccess = () => {
 
     initializeOrder();
     
-    // ✅ FIX: Auto-download ONLY for COD and ONLY once
     const autoDownloadForCOD = () => {
-      if (
-        !hasAutoDownloadTriggered.current && 
-        order?.paymentMethod === 'COD' && 
-        !hasAutoDownloaded
-      ) {
+      if (!hasAutoDownloadTriggered.current && order?.paymentMethod === 'COD' && !hasAutoDownloaded) {
         hasAutoDownloadTriggered.current = true;
-        
-        // Small delay for better UX
         setTimeout(() => {
           handleDownloadInvoice(true);
         }, 2000);
       }
     };
 
-    // If order is already available from location state
     if (order && order.paymentMethod === 'COD') {
       autoDownloadForCOD();
     }
@@ -66,24 +57,15 @@ const CheckoutSuccess = () => {
   const fetchOrderDetails = async () => {
     try {
       setLoading(true);
-      console.log('📦 Fetching order details for:', orderId);
-      
       const response = await getOrderById(orderId);
       setOrder(response.data);
-      
-      console.log('✅ Order fetched:', response.data.paymentMethod);
-      
-      // ✅ Auto-download for COD orders
       if (response.data.paymentMethod === 'COD' && !hasAutoDownloadTriggered.current) {
         hasAutoDownloadTriggered.current = true;
-        
         setTimeout(() => {
           handleDownloadInvoice(true);
         }, 2000);
       }
-      
     } catch (error) {
-      console.error('❌ Fetch order error:', error);
       toast.error('Failed to fetch order details');
       navigate('/orders');
     } finally {
@@ -91,76 +73,45 @@ const CheckoutSuccess = () => {
     }
   };
 
-  // ✅ FIXED: Manual download function
   const handleDownloadInvoice = async (isAuto = false) => {
     try {
       setDownloading(true);
-      
-      // Determine which order ID to use
       const idToUse = orderId || order?._id;
-      
       if (!idToUse) {
         toast.error('No order found to download invoice');
         return;
       }
 
-      console.log('📥 Downloading invoice for order:', idToUse);
-      
-      // Download invoice
       const response = await downloadInvoice(idToUse);
-      
-      if (!response || !response.data) {
-        throw new Error('No PDF data received from server');
-      }
-
-      // Create blob from response
+      if (!response || !response.data) throw new Error('No PDF data received from server');
       const blob = response.data;
-      
-      // Generate filename
       const invoiceNumber = order?.invoice?.invoiceNumber || `INV-${orderId?.slice(-6) || 'ORDER'}`;
       const fileName = `ShopEasy-Invoice-${invoiceNumber}.pdf`;
       
-      // ✅ FIXED: Better download method
       const downloadBlob = (blobData, filename) => {
-        // Method 1: Create object URL
         const url = window.URL.createObjectURL(blobData);
-        
-        // Method 2: Create a temporary link
         const link = document.createElement('a');
         link.href = url;
         link.download = filename;
         link.style.display = 'none';
-        
-        // Add to document
         document.body.appendChild(link);
-        
-        // Trigger download
         link.click();
-        
-        // Cleanup
         setTimeout(() => {
           document.body.removeChild(link);
           window.URL.revokeObjectURL(url);
         }, 100);
       };
       
-      // Download the blob
       downloadBlob(blob, fileName);
       
       if (!isAuto) {
         toast.success('✅ Invoice downloaded successfully!');
       } else {
-        console.log('✅ Invoice auto-downloaded for COD order');
         setHasAutoDownloaded(true);
       }
-      
     } catch (error) {
-      console.error('❌ Download error:', error);
-      
-      // Don't show toast for auto-download failures
       if (!isAuto) {
         const errorMsg = error.message || 'Failed to download invoice';
-        
         if (errorMsg.includes('payment is completed') || errorMsg.includes('will be available')) {
           toast.info('📄 Invoice will be available after payment is completed');
         } else if (errorMsg.includes('Access denied')) {
@@ -181,317 +132,222 @@ const CheckoutSuccess = () => {
   };
 
   const getPaymentBadge = (status) => {
-    if (status === 'completed') {
-      return <Badge bg="success">Paid</Badge>;
-    } else if (status === 'failed') {
-      return <Badge bg="danger">Failed</Badge>;
-    } else {
-      return <Badge bg="warning">Pending</Badge>;
-    }
+    if (status === 'completed') return <span className="premium-badge badge-success px-3 py-2">✅ Paid</span>;
+    if (status === 'failed') return <span className="premium-badge badge-danger px-3 py-2">❌ Failed</span>;
+    return <span className="premium-badge badge-warning px-3 py-2">⏳ Pending</span>;
   };
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return new Date(dateString).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
   const formatCurrency = (amount) => {
     if (!amount) return '₹0.00';
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 2
-    }).format(amount);
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2 }).format(amount);
   };
 
-  // Loading state
-  if (loading) {
-    return (
-      <Container className="text-center py-5">
-        <Spinner animation="border" variant="primary" />
-        <p className="mt-3">Loading order details...</p>
-      </Container>
-    );
-  }
+  if (loading) return <PageLoader />;
 
-  // No order found
   if (!order) {
     return (
-      <Container className="py-5">
-        <Alert variant="danger">
-          <h4>Order Not Found</h4>
-          <p>The order you are looking for does not exist or has been removed.</p>
-          <Button variant="primary" onClick={() => navigate('/orders')}>
-            View My Orders
-          </Button>
-          <Button variant="outline-secondary" onClick={() => navigate('/')} className="ms-2">
-            Go to Home
-          </Button>
-        </Alert>
-      </Container>
+      <div className="container py-5 text-center">
+        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="glass-card py-5 max-w-lg mx-auto">
+          <FaCheckCircle size={80} className="text-muted opacity-25 mb-4" />
+          <h3 className="fw-bold text-dark mb-3">Order Not Found</h3>
+          <p className="text-muted mb-4">The order you are looking for does not exist or has been removed.</p>
+          <div className="d-flex justify-content-center gap-3">
+            <button className="btn-premium px-4" onClick={() => navigate('/orders')}>View My Orders</button>
+            <button className="btn btn-light border px-4" onClick={() => navigate('/')}>Go to Home</button>
+          </div>
+        </motion.div>
+      </div>
     );
   }
 
   return (
-    <Container className="py-5">
-      <Row className="justify-content-center">
-        <Col md={10} lg={8}>
-          <Card className="border-success shadow">
-            <Card.Body className="text-center">
-              {/* Success Header */}
-              <div className="mb-4">
-                <FaCheckCircle size={80} className="text-success mb-3" />
-                <h2 className="text-success mb-2">🎉 Order Confirmed!</h2>
-                <p className="lead text-muted">
-                  Thank you for your purchase, <strong>{order.user?.name || order.shippingAddress?.name || 'Customer'}</strong>!
-                </p>
+    <div className="container py-5">
+      <div className="row justify-content-center">
+        <div className="col-lg-8">
+          <motion.div 
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="glass-card border-0 overflow-hidden"
+          >
+            {/* Header Success Section */}
+            <div className="bg-primary bg-opacity-10 text-center py-5 border-bottom border-primary border-opacity-25">
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+                className="d-inline-block bg-white rounded-circle p-3 shadow-sm mb-4"
+              >
+                <FaCheckCircle size={60} className="text-success" />
+              </motion.div>
+              <h2 className="fw-bold text-dark mb-2">🎉 Order Confirmed!</h2>
+              <p className="text-muted mb-0 lead">
+                Thank you for your purchase, <strong className="text-primary">{order.user?.name || order.shippingAddress?.name || 'Customer'}</strong>!
+              </p>
+            </div>
+
+            <div className="p-4 p-md-5">
+              <div className="alert alert-success d-flex align-items-center gap-3 rounded-4 border-0 shadow-sm mb-5">
+                <FaEnvelope size={24} className="text-success flex-shrink-0" />
+                <div>
+                  <h6 className="fw-bold mb-1">Your order has been placed successfully!</h6>
+                  <p className="mb-0 small">
+                    {order.paymentMethod === 'COD' 
+                      ? '💵 Cash on Delivery selected. Please keep cash ready for delivery.'
+                      : '💳 Payment processed successfully.'}
+                    <br/>Order confirmation has been sent to your email.
+                  </p>
+                </div>
               </div>
-              
-              {/* Success Message */}
-              <Alert variant="success" className="text-start">
-                <h5 className="mb-3">✅ Your order has been placed successfully!</h5>
-                <p className="mb-2">
-                  {order.paymentMethod === 'COD' 
-                    ? '💵 Cash on Delivery selected. Please keep cash ready for delivery.'
-                    : '💳 Payment processed successfully.'
-                  }
-                </p>
-                <p className="mb-0">
-                  <FaEnvelope className="me-2" />
-                  Order confirmation has been sent to your email.
-                </p>
-              </Alert>
-              
-              {/* Order Details */}
-              <Card className="mt-4">
-                <Card.Header className="bg-light">
-                  <h5 className="mb-0">📋 Order Details</h5>
-                </Card.Header>
-                <Card.Body>
-                  <Row>
-                    <Col md={6}>
-                      <div className="mb-3">
-                        <strong className="text-muted">Order ID:</strong>
-                        <p className="mb-0">
-                          <Badge bg="secondary" className="ms-2">
-                            {order._id?.slice(-8)?.toUpperCase() || 'N/A'}
-                          </Badge>
-                        </p>
+
+              <div className="row g-4 mb-5">
+                <div className="col-md-6">
+                  <div className="p-4 bg-light rounded-4 border h-100">
+                    <h6 className="text-muted fw-bold mb-4 text-uppercase">Order Details</h6>
+                    <div className="mb-3 d-flex justify-content-between">
+                      <span className="text-muted">Order ID</span>
+                      <strong className="text-dark">#{order._id?.slice(-8)?.toUpperCase() || 'N/A'}</strong>
+                    </div>
+                    <div className="mb-3 d-flex justify-content-between">
+                      <span className="text-muted">Date</span>
+                      <strong className="text-dark text-end">{formatDate(order.createdAt)}</strong>
+                    </div>
+                    <div className="d-flex justify-content-between">
+                      <span className="text-muted">Total Amount</span>
+                      <strong className="text-primary fs-5">{formatCurrency(order.totalAmount)}</strong>
+                    </div>
+                  </div>
+                </div>
+                <div className="col-md-6">
+                  <div className="p-4 bg-light rounded-4 border h-100">
+                    <h6 className="text-muted fw-bold mb-4 text-uppercase">Payment Info</h6>
+                    <div className="mb-3 d-flex justify-content-between align-items-center">
+                      <span className="text-muted">Method</span>
+                      <strong className="text-dark d-flex align-items-center gap-2">
+                        <FaCreditCard className="text-muted" />
+                        {order.paymentMethod === 'COD' ? 'Cash on Delivery' : 'Online Payment'}
+                      </strong>
+                    </div>
+                    <div className="mb-3 d-flex justify-content-between align-items-center">
+                      <span className="text-muted">Status</span>
+                      {getPaymentBadge(order.paymentStatus)}
+                    </div>
+                    {order.invoice?.invoiceNumber && (
+                      <div className="d-flex justify-content-between">
+                        <span className="text-muted">Invoice No</span>
+                        <strong className="text-dark">{order.invoice.invoiceNumber}</strong>
                       </div>
-                      <div className="mb-3">
-                        <strong className="text-muted">Order Date:</strong>
-                        <p className="mb-0">{formatDate(order.createdAt)}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="glass-panel p-4 mb-5">
+                <h5 className="fw-bold mb-4 d-flex align-items-center gap-2"><FaShoppingBag className="text-primary" /> Order Summary</h5>
+                <div className="table-responsive">
+                  <table className="table table-hover table-premium mb-0 align-middle">
+                    <thead className="bg-light">
+                      <tr>
+                        <th className="py-3 px-4">Product</th>
+                        <th className="text-center py-3">Qty</th>
+                        <th className="text-end py-3 px-4">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {order.items && order.items.length > 0 ? (
+                        order.items.map((item, index) => (
+                          <tr key={index}>
+                            <td className="py-3 px-4">
+                              <div className="d-flex align-items-center gap-3">
+                                {item.image && <img src={item.image} alt={item.name} className="rounded" style={{ width: '40px', height: '40px', objectFit: 'cover' }}/>}
+                                <span className="fw-bold text-dark">{item.name || 'Product'}</span>
+                              </div>
+                            </td>
+                            <td className="text-center py-3 fw-bold">{item.quantity || 1}</td>
+                            <td className="text-end py-3 px-4 fw-bold text-primary">{formatCurrency((item.price || 0) * (item.quantity || 1))}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr><td colSpan="3" className="text-center text-muted py-4">No items found</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="mt-4 pt-4 border-top">
+                  <div className="row justify-content-end">
+                    <div className="col-md-6 col-lg-5">
+                      <div className="d-flex justify-content-between mb-2">
+                        <span className="text-muted">Subtotal</span>
+                        <strong className="text-dark">{formatCurrency(order.totalAmount - (order.taxAmount || 0) - (order.shippingAmount || 0))}</strong>
                       </div>
-                      <div className="mb-3">
-                        <strong className="text-muted">Total Amount:</strong>
-                        <p className="mb-0 h5 text-primary">
-                          {formatCurrency(order.totalAmount)}
-                        </p>
-                      </div>
-                    </Col>
-                    <Col md={6}>
-                      <div className="mb-3">
-                        <strong className="text-muted">Payment Method:</strong>
-                        <p className="mb-0">
-                          <Badge bg={order.paymentMethod === 'COD' ? 'warning' : 'success'}>
-                            {order.paymentMethod === 'COD' ? 'Cash on Delivery' : 'Online Payment'}
-                          </Badge>
-                        </p>
-                      </div>
-                      <div className="mb-3">
-                        <strong className="text-muted">Payment Status:</strong>
-                        <p className="mb-0">
-                          <span className="ms-2">{getPaymentBadge(order.paymentStatus)}</span>
-                        </p>
-                      </div>
-                      {order.invoice?.invoiceNumber && (
-                        <div className="mb-3">
-                          <strong className="text-muted">Invoice No:</strong>
-                          <p className="mb-0">{order.invoice.invoiceNumber}</p>
+                      {order.taxAmount > 0 && (
+                        <div className="d-flex justify-content-between mb-2">
+                          <span className="text-muted">Tax (18% GST)</span>
+                          <strong className="text-dark">{formatCurrency(order.taxAmount)}</strong>
                         </div>
                       )}
-                    </Col>
-                  </Row>
-                  
-                  <div className="mt-3">
-                    <strong className="text-muted">📦 Delivery Address:</strong>
-                    <p className="mb-0">
-                      {order.shippingAddress?.address}, {order.shippingAddress?.city} - {order.shippingAddress?.postalCode}
-                    </p>
-                    <small className="text-muted">📞 Phone: {order.shippingAddress?.phone}</small>
+                      <div className="d-flex justify-content-between mb-3">
+                        <span className="text-muted">Shipping</span>
+                        <strong className={order.shippingAmount === 0 ? "text-success" : "text-dark"}>
+                          {order.shippingAmount === 0 ? 'FREE' : formatCurrency(order.shippingAmount)}
+                        </strong>
+                      </div>
+                      <div className="d-flex justify-content-between align-items-center pt-3 border-top">
+                        <strong className="text-dark fs-5">Total</strong>
+                        <strong className="gradient-text fs-4 fw-bold">{formatCurrency(order.totalAmount)}</strong>
+                      </div>
+                    </div>
                   </div>
-                </Card.Body>
-              </Card>
-              
-              {/* ✅ FIXED: Download Invoice Section */}
-              <Card className="mt-4">
-                <Card.Body>
-                  <h5 className="mb-3">
-                    <FaFilePdf className="me-2 text-danger" />
-                    📄 Download Invoice
-                  </h5>
-                  
-                  {order.paymentMethod === 'COD' && hasAutoDownloaded && (
-                    <Alert variant="info" className="mb-3">
-                      <FaDownload className="me-2" />
-                      <strong>Invoice Auto-Downloaded!</strong>
-                      <p className="mb-0 mt-1 small">
-                        Your invoice has been automatically downloaded to your "Downloads" folder.
-                        {downloading && ' Downloading...'}
-                      </p>
-                    </Alert>
-                  )}
-                  
-                  <div className="d-grid gap-2">
-                    <Button 
-                      variant={order.paymentMethod === 'COD' ? 'outline-primary' : 'primary'}
-                      size="lg"
+                </div>
+              </div>
+
+              <div className="row g-4 mb-5">
+                <div className="col-md-6">
+                  <div className="p-4 bg-light rounded-4 border h-100">
+                    <h6 className="fw-bold mb-3 d-flex align-items-center gap-2"><FaTruck className="text-muted" /> Delivery Address</h6>
+                    <p className="fw-bold text-dark mb-1">{order.shippingAddress?.name}</p>
+                    <p className="text-muted mb-1">{order.shippingAddress?.address}</p>
+                    <p className="text-muted mb-2">{order.shippingAddress?.city} - {order.shippingAddress?.postalCode}</p>
+                    <p className="text-muted mb-0">📞 Phone: {order.shippingAddress?.phone}</p>
+                  </div>
+                </div>
+                <div className="col-md-6">
+                  <div className="p-4 bg-primary bg-opacity-10 rounded-4 border border-primary border-opacity-25 h-100 d-flex flex-column justify-content-center">
+                    <h6 className="fw-bold mb-3 d-flex align-items-center gap-2 text-primary"><FaFilePdf /> Invoice</h6>
+                    {order.paymentMethod === 'COD' && hasAutoDownloaded && (
+                      <p className="small text-muted mb-3">Invoice auto-downloaded to your device.</p>
+                    )}
+                    <button 
+                      className="btn-premium w-100 py-2 d-flex align-items-center justify-content-center gap-2"
                       onClick={() => handleDownloadInvoice(false)}
                       disabled={downloading}
-                      className="w-100"
                     >
-                      {downloading ? (
-                        <>
-                          <Spinner size="sm" animation="border" className="me-2" />
-                          Downloading Invoice...
-                        </>
-                      ) : (
-                        <>
-                          <FaDownload className="me-2" />
-                          {hasAutoDownloaded ? 'Download Invoice Again' : 'Download Invoice PDF'}
-                        </>
-                      )}
-                    </Button>
-                    
-                    <small className="text-muted text-center">
-                      Click above to download your order invoice
-                    </small>
+                      {downloading ? <span className="spinner-border spinner-border-sm"></span> : <FaDownload />}
+                      {hasAutoDownloaded ? 'Download Again' : 'Download Invoice'}
+                    </button>
                   </div>
-                  
-                  <div className="text-start mt-3">
-                    <p className="mb-2 small text-muted"><strong>📋 Invoice includes:</strong></p>
-                    <ul className="small text-muted mb-0">
-                      <li>✅ Product details with prices</li>
-                      <li>✅ Tax calculation (18% GST)</li>
-                      <li>✅ Shipping charges</li>
-                      <li>✅ Payment method and status</li>
-                      <li>✅ Complete shipping address</li>
-                      <li>✅ Order number and date</li>
-                    </ul>
-                  </div>
-                </Card.Body>
-              </Card>
-              
-              {/* Order Summary */}
-              <div className="mt-5">
-                <h5 className="mb-3">🛒 Order Summary</h5>
-                <Card className="border">
-                  <Card.Body className="p-0">
-                    <div className="table-responsive">
-                      <table className="table table-hover mb-0">
-                        <thead className="bg-light">
-                          <tr>
-                            <th>Product</th>
-                            <th className="text-center">Qty</th>
-                            <th className="text-end">Price</th>
-                            <th className="text-end">Total</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {order.items && order.items.length > 0 ? (
-                            order.items.map((item, index) => (
-                              <tr key={index}>
-                                <td>{item.name || 'Product'}</td>
-                                <td className="text-center">{item.quantity || 1}</td>
-                                <td className="text-end">{formatCurrency(item.price || 0)}</td>
-                                <td className="text-end">{formatCurrency((item.price || 0) * (item.quantity || 1))}</td>
-                              </tr>
-                            ))
-                          ) : (
-                            <tr>
-                              <td colSpan="4" className="text-center text-muted py-3">
-                                No items found in this order
-                              </td>
-                            </tr>
-                          )}
-                          {/* Totals */}
-                          <tr className="bg-light">
-                            <td colSpan="3" className="text-end"><strong>Subtotal:</strong></td>
-                            <td className="text-end">
-                              <strong>{formatCurrency(order.totalAmount - (order.taxAmount || 0) - (order.shippingAmount || 0))}</strong>
-                            </td>
-                          </tr>
-                          {order.taxAmount > 0 && (
-                            <tr className="bg-light">
-                              <td colSpan="3" className="text-end"><strong>Tax (18% GST):</strong></td>
-                              <td className="text-end">
-                                <strong>{formatCurrency(order.taxAmount)}</strong>
-                              </td>
-                            </tr>
-                          )}
-                          <tr className="bg-light">
-                            <td colSpan="3" className="text-end"><strong>Shipping:</strong></td>
-                            <td className="text-end">
-                              <strong className={order.shippingAmount === 0 ? "text-success" : ""}>
-                                {order.shippingAmount === 0 ? 'FREE' : formatCurrency(order.shippingAmount)}
-                              </strong>
-                            </td>
-                          </tr>
-                          <tr className="table-primary">
-                            <td colSpan="3" className="text-end"><strong>Total Amount:</strong></td>
-                            <td className="text-end">
-                              <strong>{formatCurrency(order.totalAmount)}</strong>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </Card.Body>
-                </Card>
+                </div>
               </div>
-              
-              {/* Next Steps */}
-              <Alert variant="info" className="mt-4 text-start">
-                <h6><FaTruck className="me-2" />🚚 What Happens Next?</h6>
-                <ul className="mb-0">
-                  <li>📧 You will receive order confirmation via email/SMS</li>
-                  <li>📞 Our team will contact you for delivery details</li>
-                  <li>📱 Track your order in "My Orders" section</li>
-                  <li>⏰ Estimated delivery: 3-5 business days</li>
-                  <li>❓ For queries: support@shopeasy.com or call 1800-123-456</li>
-                </ul>
-              </Alert>
-              
-              {/* Action Buttons */}
-              <div className="d-grid gap-2 d-md-flex justify-content-center mt-4">
-                <Button 
-                  variant="outline-primary" 
-                  onClick={() => navigate('/orders')}
-                  className="me-2"
-                >
-                  <FaShoppingBag className="me-2" />
-                  View My Orders
-                </Button>
-                
-                <Button 
-                  variant="primary" 
-                  onClick={() => navigate('/')}
-                >
-                  <FaHome className="me-2" />
-                  Continue Shopping
-                </Button>
+
+              <div className="d-flex flex-wrap gap-3 justify-content-center">
+                <button className="btn-premium-outline px-4 py-2" onClick={() => navigate('/orders')}>
+                  <FaShoppingBag className="me-2" /> View My Orders
+                </button>
+                <button className="btn btn-light border fw-bold text-muted px-4 py-2" onClick={() => navigate('/')}>
+                  <FaHome className="me-2" /> Continue Shopping
+                </button>
               </div>
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
-    </Container>
+
+            </div>
+          </motion.div>
+        </div>
+      </div>
+    </div>
   );
 };
 

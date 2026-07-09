@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Card, Form, Button, Alert, ListGroup, Badge } from 'react-bootstrap';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   FaShoppingCart, FaMapMarkerAlt, FaCreditCard, FaCheck, 
-  FaRupeeSign, FaTag, FaTimes 
+  FaRupeeSign, FaTag, FaTimes, FaShieldAlt, FaLock 
 } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -15,20 +15,11 @@ const Checkout = () => {
   const { userInfo } = useAuth();
   
   const [cartItems, setCartItems] = useState([]);
-  const [shippingAddress, setShippingAddress] = useState({
-    name: '',
-    address: '',
-    city: '',
-    state: '',
-    country: 'India',
-    postalCode: '',
-    phone: ''
-  });
+  const [shippingAddress, setShippingAddress] = useState({ name: '', address: '', city: '', state: '', country: 'India', postalCode: '', phone: '' });
   const [paymentMethod, setPaymentMethod] = useState('COD');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
   
-  // ✅ COUPON STATES
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponLoading, setCouponLoading] = useState(false);
@@ -38,17 +29,7 @@ const Checkout = () => {
   useEffect(() => {
     const items = getCartFromLocalStorage();
     setCartItems(items);
-    
-    // Pre-fill user info if available
-    if (userInfo) {
-      setShippingAddress(prev => ({
-        ...prev,
-        name: userInfo.name || '',
-        phone: userInfo.phone || ''
-      }));
-    }
-    
-    // Load applied coupon from localStorage
+    if (userInfo) setShippingAddress(prev => ({ ...prev, name: userInfo.name || '', phone: userInfo.phone || '' }));
     const savedCoupon = localStorage.getItem('checkoutCoupon');
     if (savedCoupon) {
       setAppliedCoupon(JSON.parse(savedCoupon));
@@ -58,45 +39,27 @@ const Checkout = () => {
 
   const validateForm = () => {
     const newErrors = {};
-    
-    // Required fields validation
     if (!shippingAddress.name.trim()) newErrors.name = 'Name is required';
     if (!shippingAddress.address.trim()) newErrors.address = 'Address is required';
     if (!shippingAddress.city.trim()) newErrors.city = 'City is required';
     if (!shippingAddress.state.trim()) newErrors.state = 'State is required';
     if (!shippingAddress.postalCode.trim()) newErrors.postalCode = 'Postal Code is required';
     if (!shippingAddress.phone.trim()) newErrors.phone = 'Phone Number is required';
+    if (shippingAddress.phone && !/^\d{10}$/.test(shippingAddress.phone)) newErrors.phone = 'Phone number must be 10 digits';
     
-    // Phone number validation (10 digits)
-    if (shippingAddress.phone && !/^\d{10}$/.test(shippingAddress.phone)) {
-      newErrors.phone = 'Phone number must be 10 digits';
-    }
-    
-    // ✅ Check minimum order amount for coupon
     if (appliedCoupon) {
-      const subtotal = calculateSubtotal();
-      if (subtotal < appliedCoupon.minOrderAmount) {
+      if (calculateSubtotal() < appliedCoupon.minOrderAmount) {
         newErrors.coupon = `Coupon requires minimum order of ₹${appliedCoupon.minOrderAmount}`;
       }
     }
-    
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  // ✅ APPLY COUPON FUNCTION
   const handleApplyCoupon = async () => {
-    if (!couponCode.trim()) {
-      setCouponError('Please enter a coupon code');
-      return;
-    }
-
+    if (!couponCode.trim()) return setCouponError('Please enter a coupon code');
     const subtotal = calculateSubtotal();
-    
-    if (subtotal === 0) {
-      setCouponError('Add items to cart before applying coupon');
-      return;
-    }
+    if (subtotal === 0) return setCouponError('Add items to cart before applying coupon');
 
     setCouponLoading(true);
     setCouponError('');
@@ -104,7 +67,6 @@ const Checkout = () => {
 
     try {
       const response = await validateCoupon(couponCode, subtotal);
-      
       if (response.success) {
         const couponData = {
           code: response.data.coupon.code,
@@ -114,24 +76,20 @@ const Checkout = () => {
           discount: response.data.discount,
           minOrderAmount: response.data.coupon.minOrderAmount
         };
-        
         setAppliedCoupon(couponData);
         setCouponSuccess(`Coupon applied! You saved ₹${response.data.discount}`);
         setCouponCode('');
-        
         toast.success('Coupon applied successfully!');
       } else {
         setCouponError(response.message || 'Invalid coupon code');
       }
     } catch (error) {
-      console.error('Apply coupon error:', error);
       setCouponError(error.response?.data?.message || 'Error applying coupon');
     } finally {
       setCouponLoading(false);
     }
   };
 
-  // ✅ REMOVE COUPON FUNCTION
   const handleRemoveCoupon = () => {
     setAppliedCoupon(null);
     setCouponError('');
@@ -140,495 +98,242 @@ const Checkout = () => {
   };
 
   const handlePlaceOrder = async () => {
+    if (!validateForm()) return toast.error('Please fill all required fields correctly');
+    if (cartItems.length === 0) return navigate('/cart');
+
+    setLoading(true);
+    const orderData = {
+      items: cartItems.map(item => ({ product: item.product, quantity: item.quantity })),
+      shippingAddress: { ...shippingAddress },
+      paymentMethod,
+      customerNotes: `Order placed by ${userInfo?.name || 'Customer'}`,
+      couponCode: appliedCoupon ? appliedCoupon.code : null
+    };
+
     try {
-      // Validate form
-      if (!validateForm()) {
-        toast.error('Please fill all required fields correctly');
-        return;
-      }
-
-      // Validate cart
-      if (cartItems.length === 0) {
-        toast.error('Your cart is empty');
-        navigate('/cart');
-        return;
-      }
-
-      setLoading(true);
-
-      // Prepare order data
-      const orderData = {
-        items: cartItems.map(item => ({
-          product: item.product,
-          quantity: item.quantity
-        })),
-        shippingAddress: {
-          name: shippingAddress.name,
-          address: shippingAddress.address,
-          city: shippingAddress.city,
-          state: shippingAddress.state,
-          country: shippingAddress.country,
-          postalCode: shippingAddress.postalCode,
-          phone: shippingAddress.phone
-        },
-        paymentMethod,
-        customerNotes: `Order placed by ${userInfo?.name || 'Customer'}`,
-        couponCode: appliedCoupon ? appliedCoupon.code : null // ✅ ADD COUPON CODE
-      };
-
-      console.log('Order Data:', orderData);
-
-      // Create order
       const { data } = await createOrder(orderData);
-
       toast.success('Order placed successfully!');
-      
-      // Clear cart and coupon
       clearCartFromLocalStorage();
       localStorage.removeItem('appliedCoupon');
       localStorage.removeItem('checkoutCoupon');
       window.dispatchEvent(new Event('cartUpdated'));
-      
-      // Navigate to success page
-      navigate(`/order-success/${data._id}`, {
-        state: { 
-          order: data,
-          message: 'Order placed successfully!'
-        }
-      });
-
+      navigate(`/order-success/${data._id}`, { state: { order: data, message: 'Order placed successfully!' } });
     } catch (error) {
-      console.error('Order error:', error);
-      
-      if (error.response?.data?.message) {
-        toast.error(error.response.data.message);
-      } else if (error.message) {
-        toast.error(error.message);
-      } else {
-        toast.error('Failed to place order. Please try again.');
-      }
+      toast.error(error.response?.data?.message || error.message || 'Failed to place order. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const calculateSubtotal = () => {
-    return cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  };
+  const calculateSubtotal = () => cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const calculateTax = () => calculateSubtotal() * 0.18;
+  const calculateShipping = () => calculateSubtotal() > 999 ? 0 : 100;
 
-  const calculateTax = () => {
-    return calculateSubtotal() * 0.18;
-  };
-
-  const calculateShipping = () => {
-    return calculateSubtotal() > 999 ? 0 : 50;
-  };
-
-  // ✅ COUPON DISCOUNT CALCULATION
   const calculateDiscount = () => {
     if (!appliedCoupon) return 0;
-    
     const subtotal = calculateSubtotal();
-    let discount = 0;
-    
-    if (appliedCoupon.discountType === 'percentage') {
-      discount = (subtotal * appliedCoupon.discountValue) / 100;
-      
-      // Apply max discount limit if set
-      if (appliedCoupon.maxDiscount && discount > appliedCoupon.maxDiscount) {
-        discount = appliedCoupon.maxDiscount;
-      }
-    } else {
-      // Fixed amount discount
-      discount = appliedCoupon.discountValue;
-    }
-    
+    let discount = appliedCoupon.discountType === 'percentage' ? (subtotal * appliedCoupon.discountValue) / 100 : appliedCoupon.discountValue;
+    if (appliedCoupon.maxDiscount && discount > appliedCoupon.maxDiscount) discount = appliedCoupon.maxDiscount;
     return discount;
   };
 
-  const calculateTotal = () => {
-    return calculateSubtotal() + calculateTax() + calculateShipping() - calculateDiscount();
-  };
+  const calculateTotal = () => calculateSubtotal() + calculateTax() + calculateShipping() - calculateDiscount();
 
   if (cartItems.length === 0) {
     return (
-      <Container className="py-5 text-center">
-        <Alert variant="info">
-          <FaShoppingCart size={48} className="mb-3" />
-          <h4>Your cart is empty</h4>
-          <p>Add some products to your cart before checkout.</p>
-          <Button variant="primary" onClick={() => navigate('/')}>
-            Continue Shopping
-          </Button>
-        </Alert>
-      </Container>
+      <div className="container py-5 text-center">
+        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="glass-card py-5 shadow-sm max-w-lg mx-auto">
+          <FaShoppingCart size={80} className="text-muted opacity-25 mb-4" />
+          <h3 className="fw-bold text-dark mb-3">Your cart is empty</h3>
+          <p className="text-muted mb-4">Add some products to your cart before checkout.</p>
+          <button className="btn-premium px-4 py-2" onClick={() => navigate('/')}>Continue Shopping</button>
+        </motion.div>
+      </div>
     );
   }
 
   return (
-    <Container className="py-4">
-      <h1 className="mb-4">
-        <FaShoppingCart className="me-2" />
-        Checkout
-      </h1>
+    <div className="container py-5">
+      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-5">
+        <h1 className="h2 fw-bold gradient-text d-flex align-items-center gap-3">
+          <FaLock /> Secure Checkout
+        </h1>
+        <p className="text-muted mb-0">Complete your order securely</p>
+      </motion.div>
 
-      <Row>
-        {/* Shipping Address */}
-        <Col lg={8}>
-          <Card className="mb-4 shadow-sm">
-            <Card.Header className="bg-primary text-white">
-              <FaMapMarkerAlt className="me-2" />
-              Shipping Address
-            </Card.Header>
-            <Card.Body>
-              <Form>
-                <Row>
-                  <Col md={6}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Full Name *</Form.Label>
-                      <Form.Control
-                        type="text"
-                        placeholder="Enter your full name"
-                        value={shippingAddress.name}
-                        onChange={(e) => setShippingAddress({
-                          ...shippingAddress,
-                          name: e.target.value
-                        })}
-                        isInvalid={!!errors.name}
-                      />
-                      <Form.Control.Feedback type="invalid">
-                        {errors.name}
-                      </Form.Control.Feedback>
-                    </Form.Group>
-                  </Col>
-                  <Col md={6}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Phone Number *</Form.Label>
-                      <Form.Control
-                        type="tel"
-                        placeholder="Enter 10-digit phone number"
-                        value={shippingAddress.phone}
-                        onChange={(e) => setShippingAddress({
-                          ...shippingAddress,
-                          phone: e.target.value
-                        })}
-                        isInvalid={!!errors.phone}
-                      />
-                      <Form.Control.Feedback type="invalid">
-                        {errors.phone}
-                      </Form.Control.Feedback>
-                      <Form.Text className="text-muted">
-                        We'll contact you for delivery updates
-                      </Form.Text>
-                    </Form.Group>
-                  </Col>
-                </Row>
+      <div className="row g-5">
+        <div className="col-lg-7">
+          <motion.div initial={{ opacity: 0, x: -50 }} animate={{ opacity: 1, x: 0 }} className="d-flex flex-column gap-4">
+            
+            {/* Shipping Address */}
+            <div className="glass-panel p-4">
+              <h4 className="fw-bold mb-4 pb-3 border-bottom d-flex align-items-center gap-2">
+                <FaMapMarkerAlt className="text-primary" /> Shipping Address
+              </h4>
+              <div className="row g-3">
+                <div className="col-md-6">
+                  <label className="fw-bold text-muted mb-2">Full Name *</label>
+                  <input type="text" className={`input-premium ${errors.name ? 'border-danger' : ''}`} value={shippingAddress.name} onChange={(e) => setShippingAddress({ ...shippingAddress, name: e.target.value })} placeholder="John Doe" />
+                  {errors.name && <small className="text-danger fw-bold">{errors.name}</small>}
+                </div>
+                <div className="col-md-6">
+                  <label className="fw-bold text-muted mb-2">Phone Number *</label>
+                  <input type="tel" className={`input-premium ${errors.phone ? 'border-danger' : ''}`} value={shippingAddress.phone} onChange={(e) => setShippingAddress({ ...shippingAddress, phone: e.target.value })} placeholder="10-digit number" />
+                  {errors.phone && <small className="text-danger fw-bold">{errors.phone}</small>}
+                </div>
+                <div className="col-12">
+                  <label className="fw-bold text-muted mb-2">Complete Address *</label>
+                  <textarea rows="3" className={`input-premium ${errors.address ? 'border-danger' : ''}`} value={shippingAddress.address} onChange={(e) => setShippingAddress({ ...shippingAddress, address: e.target.value })} placeholder="House/Flat No., Street Name, Area" />
+                  {errors.address && <small className="text-danger fw-bold">{errors.address}</small>}
+                </div>
+                <div className="col-md-6">
+                  <label className="fw-bold text-muted mb-2">City *</label>
+                  <input type="text" className={`input-premium ${errors.city ? 'border-danger' : ''}`} value={shippingAddress.city} onChange={(e) => setShippingAddress({ ...shippingAddress, city: e.target.value })} placeholder="e.g. Mumbai" />
+                  {errors.city && <small className="text-danger fw-bold">{errors.city}</small>}
+                </div>
+                <div className="col-md-6">
+                  <label className="fw-bold text-muted mb-2">State *</label>
+                  <input type="text" className={`input-premium ${errors.state ? 'border-danger' : ''}`} value={shippingAddress.state} onChange={(e) => setShippingAddress({ ...shippingAddress, state: e.target.value })} placeholder="e.g. Maharashtra" />
+                  {errors.state && <small className="text-danger fw-bold">{errors.state}</small>}
+                </div>
+                <div className="col-md-6">
+                  <label className="fw-bold text-muted mb-2">Postal Code *</label>
+                  <input type="text" className={`input-premium ${errors.postalCode ? 'border-danger' : ''}`} value={shippingAddress.postalCode} onChange={(e) => setShippingAddress({ ...shippingAddress, postalCode: e.target.value })} placeholder="e.g. 400001" />
+                  {errors.postalCode && <small className="text-danger fw-bold">{errors.postalCode}</small>}
+                </div>
+                <div className="col-md-6">
+                  <label className="fw-bold text-muted mb-2">Country</label>
+                  <input type="text" className="input-premium bg-light" value={shippingAddress.country} readOnly />
+                </div>
+              </div>
+            </div>
 
-                <Form.Group className="mb-3">
-                  <Form.Label>Address *</Form.Label>
-                  <Form.Control
-                    as="textarea"
-                    rows={3}
-                    placeholder="Enter complete address"
-                    value={shippingAddress.address}
-                    onChange={(e) => setShippingAddress({
-                      ...shippingAddress,
-                      address: e.target.value
-                    })}
-                    isInvalid={!!errors.address}
-                  />
-                  <Form.Control.Feedback type="invalid">
-                    {errors.address}
-                  </Form.Control.Feedback>
-                </Form.Group>
-
-                <Row>
-                  <Col md={6}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>City *</Form.Label>
-                      <Form.Control
-                        type="text"
-                        placeholder="Enter city"
-                        value={shippingAddress.city}
-                        onChange={(e) => setShippingAddress({
-                          ...shippingAddress,
-                          city: e.target.value
-                        })}
-                        isInvalid={!!errors.city}
-                      />
-                      <Form.Control.Feedback type="invalid">
-                        {errors.city}
-                      </Form.Control.Feedback>
-                    </Form.Group>
-                  </Col>
-                  <Col md={6}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>State *</Form.Label>
-                      <Form.Control
-                        type="text"
-                        placeholder="Enter state"
-                        value={shippingAddress.state}
-                        onChange={(e) => setShippingAddress({
-                          ...shippingAddress,
-                          state: e.target.value
-                        })}
-                        isInvalid={!!errors.state}
-                      />
-                      <Form.Control.Feedback type="invalid">
-                        {errors.state}
-                      </Form.Control.Feedback>
-                    </Form.Group>
-                  </Col>
-                </Row>
-
-                <Row>
-                  <Col md={6}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Postal Code *</Form.Label>
-                      <Form.Control
-                        type="text"
-                        placeholder="Enter postal code"
-                        value={shippingAddress.postalCode}
-                        onChange={(e) => setShippingAddress({
-                          ...shippingAddress,
-                          postalCode: e.target.value
-                        })}
-                        isInvalid={!!errors.postalCode}
-                      />
-                      <Form.Control.Feedback type="invalid">
-                        {errors.postalCode}
-                      </Form.Control.Feedback>
-                    </Form.Group>
-                  </Col>
-                  <Col md={6}>
-                    <Form.Group className="mb-3">
-                      <Form.Label>Country</Form.Label>
-                      <Form.Control
-                        type="text"
-                        value={shippingAddress.country}
-                        onChange={(e) => setShippingAddress({
-                          ...shippingAddress,
-                          country: e.target.value
-                        })}
-                        readOnly
-                      />
-                    </Form.Group>
-                  </Col>
-                </Row>
-              </Form>
-            </Card.Body>
-          </Card>
-
-          {/* Payment Method */}
-          <Card className="mb-4 shadow-sm">
-            <Card.Header className="bg-primary text-white">
-              <FaCreditCard className="me-2" />
-              Payment Method
-            </Card.Header>
-            <Card.Body>
-              <Form>
-                <Form.Check
-                  type="radio"
-                  id="cod"
-                  label="Cash on Delivery (COD)"
-                  name="paymentMethod"
-                  value="COD"
-                  checked={paymentMethod === 'COD'}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                  className="mb-3"
-                />
-                <Form.Check
-                  type="radio"
-                  id="razorpay"
-                  label="Online Payment (Razorpay)"
-                  name="paymentMethod"
-                  value="Razorpay"
-                  checked={paymentMethod === 'Razorpay'}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                  className="mb-3"
-                />
-              </Form>
-              
-              {paymentMethod === 'COD' && (
-                <Alert variant="info" className="mt-3">
-                  <FaCheck className="me-2" />
-                  Pay when your order is delivered. No online payment required.
-                </Alert>
-              )}
-              
-              {paymentMethod === 'Razorpay' && (
-                <Alert variant="warning" className="mt-3">
-                  You will be redirected to Razorpay payment gateway after order confirmation.
-                </Alert>
-              )}
-            </Card.Body>
-          </Card>
-        </Col>
+            {/* Payment Method */}
+            <div className="glass-panel p-4">
+              <h4 className="fw-bold mb-4 pb-3 border-bottom d-flex align-items-center gap-2">
+                <FaCreditCard className="text-primary" /> Payment Method
+              </h4>
+              <div className="d-flex flex-column gap-3">
+                <label className={`glass-card p-3 d-flex align-items-center gap-3 cursor-pointer ${paymentMethod === 'COD' ? 'border-primary shadow' : ''}`}>
+                  <input type="radio" name="payment" value="COD" checked={paymentMethod === 'COD'} onChange={(e) => setPaymentMethod(e.target.value)} style={{ width: '20px', height: '20px' }} />
+                  <div>
+                    <h6 className="fw-bold m-0 text-dark">Cash on Delivery (COD)</h6>
+                    <small className="text-muted">Pay when your order is delivered</small>
+                  </div>
+                </label>
+                <label className={`glass-card p-3 d-flex align-items-center gap-3 cursor-pointer ${paymentMethod === 'Razorpay' ? 'border-primary shadow' : ''}`}>
+                  <input type="radio" name="payment" value="Razorpay" checked={paymentMethod === 'Razorpay'} onChange={(e) => setPaymentMethod(e.target.value)} style={{ width: '20px', height: '20px' }} />
+                  <div>
+                    <h6 className="fw-bold m-0 text-dark">Online Payment (Razorpay)</h6>
+                    <small className="text-muted">Pay securely with Credit/Debit Card, UPI, or Netbanking</small>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </motion.div>
+        </div>
 
         {/* Order Summary */}
-        <Col lg={4}>
-          <Card className="shadow-sm sticky-top" style={{ top: '20px' }}>
-            <Card.Header className="bg-dark text-white">
-              <FaShoppingCart className="me-2" />
-              Order Summary
-            </Card.Header>
-            <Card.Body>
-              {/* Coupon Section */}
-              {appliedCoupon ? (
-                <Alert variant="success" className="p-2 mb-3">
-                  <div className="d-flex justify-content-between align-items-center">
-                    <div>
-                      <FaTag className="me-2" />
-                      <strong>{appliedCoupon.code}</strong>
-                      <small className="ms-2">
-                        ({appliedCoupon.discountType === 'percentage' 
-                          ? `${appliedCoupon.discountValue}%` 
-                          : `₹${appliedCoupon.discountValue}`})
-                      </small>
-                    </div>
-                    <Button 
-                      variant="link" 
-                      className="p-0 text-danger"
-                      onClick={handleRemoveCoupon}
-                      title="Remove coupon"
-                    >
-                      <FaTimes />
-                    </Button>
-                  </div>
-                </Alert>
-              ) : (
-                <div className="mb-3">
-                  <Form.Group>
-                    <Form.Label className="small">Have a coupon code?</Form.Label>
-                    <div className="d-flex">
-                      <Form.Control
-                        type="text"
-                        placeholder="Enter coupon"
-                        value={couponCode}
-                        onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                        size="sm"
-                        className="me-2"
-                      />
-                      <Button 
-                        variant="outline-primary" 
-                        size="sm"
-                        onClick={handleApplyCoupon}
-                        disabled={couponLoading}
-                      >
-                        {couponLoading ? '...' : 'Apply'}
-                      </Button>
-                    </div>
-                    {couponError && (
-                      <Form.Text className="text-danger small">
-                        {couponError}
-                      </Form.Text>
-                    )}
-                    {couponSuccess && (
-                      <Form.Text className="text-success small">
-                        {couponSuccess}
-                      </Form.Text>
-                    )}
-                  </Form.Group>
-                </div>
-              )}
+        <div className="col-lg-5">
+          <motion.div initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} className="sticky-top" style={{ top: '20px' }}>
+            <div className="glass-card p-4">
+              <h4 className="fw-bold mb-4 pb-3 border-bottom text-dark">Order Summary</h4>
               
-              {errors.coupon && (
-                <Alert variant="danger" className="py-2 mb-3">
-                  {errors.coupon}
-                </Alert>
-              )}
-              
-              <ListGroup variant="flush">
+              {/* Items List */}
+              <div className="d-flex flex-column gap-3 mb-4 max-h-64 overflow-auto">
                 {cartItems.map((item, index) => (
-                  <ListGroup.Item key={index} className="d-flex justify-content-between align-items-center">
-                    <div>
-                      <strong>{item.name}</strong>
-                      <div className="text-muted small">
-                        Qty: {item.quantity} × <FaRupeeSign size={10} />{item.price.toFixed(2)}
+                  <div key={index} className="d-flex align-items-center justify-content-between">
+                    <div className="d-flex align-items-center gap-3">
+                      <div className="position-relative">
+                        <img src={item.image} alt={item.name} className="rounded object-fit-cover shadow-sm" style={{ width: '50px', height: '50px' }} />
+                        <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-primary">{item.quantity}</span>
+                      </div>
+                      <div className="text-truncate" style={{ maxWidth: '150px' }}>
+                        <span className="fw-bold d-block text-dark text-truncate">{item.name}</span>
+                        <small className="text-muted"><FaRupeeSign size={10} />{item.price.toFixed(2)} each</small>
                       </div>
                     </div>
-                    <span>
-                      <FaRupeeSign size={12} />
-                      {(item.price * item.quantity).toFixed(2)}
-                    </span>
-                  </ListGroup.Item>
+                    <span className="fw-bold"><FaRupeeSign size={12} />{(item.price * item.quantity).toFixed(2)}</span>
+                  </div>
                 ))}
-                
-                <ListGroup.Item className="d-flex justify-content-between">
-                  <span>Subtotal</span>
-                  <span><FaRupeeSign size={12} />{calculateSubtotal().toFixed(2)}</span>
-                </ListGroup.Item>
-                
-                <ListGroup.Item className="d-flex justify-content-between">
-                  <span>Tax (18% GST)</span>
-                  <span><FaRupeeSign size={12} />{calculateTax().toFixed(2)}</span>
-                </ListGroup.Item>
-                
-                <ListGroup.Item className="d-flex justify-content-between">
-                  <span>Shipping</span>
-                  <span className={calculateShipping() === 0 ? "text-success" : ""}>
-                    {calculateShipping() === 0 ? 'FREE' : <><FaRupeeSign size={12} />{calculateShipping().toFixed(2)}</>}
-                  </span>
-                </ListGroup.Item>
-                
-                {/* Coupon Discount */}
-                {appliedCoupon && (
-                  <ListGroup.Item className="d-flex justify-content-between text-success">
-                    <span>Coupon Discount</span>
-                    <span>-<FaRupeeSign size={12} />{calculateDiscount().toFixed(2)}</span>
-                  </ListGroup.Item>
+              </div>
+
+              {/* Coupon Section */}
+              <div className="bg-light p-3 rounded-4 border mb-4">
+                {appliedCoupon ? (
+                  <div className="d-flex justify-content-between align-items-center">
+                    <div>
+                      <FaTag className="me-2 text-success" />
+                      <strong className="text-dark">{appliedCoupon.code}</strong>
+                      <small className="ms-2 text-success fw-bold">({appliedCoupon.discountType === 'percentage' ? `${appliedCoupon.discountValue}%` : `₹${appliedCoupon.discountValue}`})</small>
+                    </div>
+                    <button className="btn btn-link p-0 text-danger" onClick={handleRemoveCoupon}><FaTimes /></button>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="fw-bold text-muted mb-2 small">Have a coupon code?</label>
+                    <div className="d-flex gap-2">
+                      <input type="text" placeholder="Enter coupon" value={couponCode} onChange={(e) => setCouponCode(e.target.value.toUpperCase())} className="form-control shadow-none rounded-3 border" />
+                      <button className="btn-premium px-3 py-2" onClick={handleApplyCoupon} disabled={couponLoading}>{couponLoading ? '...' : 'Apply'}</button>
+                    </div>
+                    {couponError && <small className="text-danger fw-bold d-block mt-1">{couponError}</small>}
+                    {couponSuccess && <small className="text-success fw-bold d-block mt-1">{couponSuccess}</small>}
+                  </div>
                 )}
-                
-                <ListGroup.Item className="d-flex justify-content-between bg-light">
-                  <strong>Total Amount</strong>
-                  <strong><FaRupeeSign size={14} />{calculateTotal().toFixed(2)}</strong>
-                </ListGroup.Item>
-              </ListGroup>
-              
-              <div className="mt-4">
-                <Button
-                  variant="primary"
-                  size="lg"
-                  className="w-100"
-                  onClick={handlePlaceOrder}
-                  disabled={loading || cartItems.length === 0}
-                >
-                  {loading ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm me-2"></span>
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <FaCheck className="me-2" />
-                      Place Order
-                    </>
-                  )}
-                </Button>
-                
-                <Button
-                  variant="outline-secondary"
-                  size="sm"
-                  className="w-100 mt-2"
-                  onClick={() => navigate('/cart')}
-                >
-                  Back to Cart
-                </Button>
+                {errors.coupon && <small className="text-danger fw-bold d-block mt-2">{errors.coupon}</small>}
               </div>
-              
-              <div className="mt-3 small text-muted">
-                <p className="mb-1">By placing your order, you agree to our:</p>
-                <ul className="ps-3 mb-0">
-                  <li>Terms & Conditions</li>
-                  <li>Privacy Policy</li>
-                  <li>Return Policy</li>
-                </ul>
+
+              {/* Totals */}
+              <div className="d-flex flex-column gap-3 mb-4 text-dark">
+                <div className="d-flex justify-content-between">
+                  <span className="text-muted fw-bold">Subtotal</span>
+                  <span className="fw-bold"><FaRupeeSign className="me-1" size={14} />{calculateSubtotal().toFixed(2)}</span>
+                </div>
+                <div className="d-flex justify-content-between">
+                  <span className="text-muted fw-bold">Tax (18% GST)</span>
+                  <span className="fw-bold"><FaRupeeSign className="me-1" size={14} />{calculateTax().toFixed(2)}</span>
+                </div>
+                <div className="d-flex justify-content-between">
+                  <span className="text-muted fw-bold">Shipping</span>
+                  <span className={calculateShipping() === 0 ? "text-success fw-bold" : "fw-bold"}>
+                    {calculateShipping() === 0 ? 'FREE' : <><FaRupeeSign className="me-1" size={14} />100</>}
+                  </span>
+                </div>
+                {appliedCoupon && (
+                  <div className="d-flex justify-content-between text-success">
+                    <span className="fw-bold">Coupon Discount</span>
+                    <span className="fw-bold">- <FaRupeeSign className="me-1" size={14} />{calculateDiscount().toFixed(2)}</span>
+                  </div>
+                )}
               </div>
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
-    </Container>
+
+              <hr className="my-4 text-muted opacity-25" />
+
+              <div className="d-flex justify-content-between mb-4 align-items-center">
+                <span className="fs-5 fw-bold text-dark">Total</span>
+                <span className="fs-3 fw-bold gradient-text"><FaRupeeSign className="me-1" size={24} />{calculateTotal().toFixed(2)}</span>
+              </div>
+
+              <button 
+                className="btn-premium w-100 py-3 mb-3 fw-bold shadow-lg"
+                onClick={handlePlaceOrder}
+                disabled={loading || cartItems.length === 0}
+              >
+                {loading ? <span className="spinner-border spinner-border-sm me-2"></span> : <FaCheck className="me-2" />}
+                {loading ? 'Processing...' : `Pay ₹${calculateTotal().toFixed(2)}`}
+              </button>
+
+              <button className="btn btn-light w-100 border fw-bold text-muted py-2 mb-4" onClick={() => navigate('/cart')}>Back to Cart</button>
+
+              <div className="text-center small text-muted d-flex align-items-center justify-content-center gap-2 bg-light p-3 rounded-4 border">
+                <FaShieldAlt className="text-success fs-5" /> 
+                <span className="fw-bold">256-bit SSL Encrypted Secure Checkout</span>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </div>
+    </div>
   );
 };
 

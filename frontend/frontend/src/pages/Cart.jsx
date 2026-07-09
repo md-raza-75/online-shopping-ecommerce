@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { 
-  Container, Row, Col, Card, Table, Button, Form, Alert, 
-  Badge, Spinner, Modal, InputGroup 
-} from 'react-bootstrap';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Modal } from 'react-bootstrap';
 import { 
   FaShoppingCart, FaTrash, FaPlus, FaMinus, FaArrowRight, 
   FaHome, FaExclamationTriangle, FaRupeeSign, FaTag,
-  FaCheck, FaTimes
+  FaCheck, FaTimes, FaShieldAlt
 } from 'react-icons/fa';
 import { toast } from 'react-toastify';
 import { 
@@ -21,7 +19,6 @@ const Cart = () => {
   const [loading, setLoading] = useState(false);
   const [updatingItem, setUpdatingItem] = useState(null);
   
-  // ✅ COUPON STATES
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponLoading, setCouponLoading] = useState(false);
@@ -31,26 +28,15 @@ const Cart = () => {
 
   useEffect(() => {
     loadCartItems();
-    
-    // Load applied coupon from localStorage
     const savedCoupon = localStorage.getItem('appliedCoupon');
-    if (savedCoupon) {
-      setAppliedCoupon(JSON.parse(savedCoupon));
-    }
+    if (savedCoupon) setAppliedCoupon(JSON.parse(savedCoupon));
     
-    // Listen for cart updates from other components
-    const handleCartUpdate = () => {
-      loadCartItems();
-    };
-    
+    const handleCartUpdate = () => loadCartItems();
     window.addEventListener('cartUpdated', handleCartUpdate);
     return () => window.removeEventListener('cartUpdated', handleCartUpdate);
   }, []);
 
-  const loadCartItems = () => {
-    const cart = getCartFromLocalStorage();
-    setCartItems(cart);
-  };
+  const loadCartItems = () => setCartItems(getCartFromLocalStorage());
 
   const removeFromCart = (id, name) => {
     const updatedCart = cartItems.filter(item => item.product !== id);
@@ -62,19 +48,15 @@ const Cart = () => {
 
   const updateQuantity = async (id, newQuantity) => {
     setUpdatingItem(id);
-    
-    // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, 300));
     
     const updatedCart = cartItems.map(item => {
       if (item.product === id) {
         const validQuantity = Math.max(1, Math.min(item.stock, newQuantity));
-        
         if (validQuantity > item.stock) {
           toast.error(`Only ${item.stock} items available in stock`);
           return item;
         }
-        
         return { ...item, quantity: validQuantity };
       }
       return item;
@@ -84,60 +66,31 @@ const Cart = () => {
     saveCartToLocalStorage(updatedCart);
     window.dispatchEvent(new Event('cartUpdated'));
     setUpdatingItem(null);
-    
-    // Clear coupon if quantity changes
-    if (appliedCoupon) {
-      handleRemoveCoupon();
-    }
+    if (appliedCoupon) handleRemoveCoupon();
   };
 
-  const calculateSubtotal = () => {
-    return cartItems.reduce((total, item) => total + (item.price * item.quantity), 0);
-  };
+  const calculateSubtotal = () => cartItems.reduce((total, item) => total + (item.price * item.quantity), 0);
+  const calculateShipping = () => calculateSubtotal() >= 999 ? 0 : 100;
+  const calculateTax = () => calculateSubtotal() * 0.18;
 
-  const calculateShipping = () => {
-    const subtotal = calculateSubtotal();
-    return subtotal >= 999 ? 0 : 100;
-  };
-
-  const calculateTax = () => {
-    const subtotal = calculateSubtotal();
-    return subtotal * 0.18;
-  };
-
-  // ✅ COUPON CALCULATION
   const calculateDiscount = () => {
     if (!appliedCoupon) return 0;
-    
     const subtotal = calculateSubtotal();
     let discount = 0;
     
     if (appliedCoupon.discountType === 'percentage') {
       discount = (subtotal * appliedCoupon.discountValue) / 100;
-      
-      // Apply max discount limit if set
-      if (appliedCoupon.maxDiscount && discount > appliedCoupon.maxDiscount) {
-        discount = appliedCoupon.maxDiscount;
-      }
+      if (appliedCoupon.maxDiscount && discount > appliedCoupon.maxDiscount) discount = appliedCoupon.maxDiscount;
     } else {
-      // Fixed amount discount
       discount = appliedCoupon.discountValue;
     }
-    
     return discount;
   };
 
-  const calculateTotal = () => {
-    const subtotal = calculateSubtotal();
-    const shipping = calculateShipping();
-    const tax = calculateTax();
-    const discount = calculateDiscount();
-    
-    return subtotal + shipping + tax - discount;
-  };
+  const calculateTotal = () => calculateSubtotal() + calculateShipping() + calculateTax() - calculateDiscount();
 
   const clearCart = () => {
-    if (window.confirm('Are you sure you want to clear your cart? All items will be removed.')) {
+    if (window.confirm('Are you sure you want to clear your cart?')) {
       setCartItems([]);
       clearCartFromLocalStorage();
       toast.info('Cart cleared successfully');
@@ -146,19 +99,10 @@ const Cart = () => {
     }
   };
 
-  // ✅ APPLY COUPON FUNCTION
   const handleApplyCoupon = async () => {
-    if (!couponCode.trim()) {
-      setCouponError('Please enter a coupon code');
-      return;
-    }
-
+    if (!couponCode.trim()) return setCouponError('Please enter a coupon code');
     const subtotal = calculateSubtotal();
-    
-    if (subtotal === 0) {
-      setCouponError('Add items to cart before applying coupon');
-      return;
-    }
+    if (subtotal === 0) return setCouponError('Add items to cart before applying coupon');
 
     setCouponLoading(true);
     setCouponError('');
@@ -166,7 +110,6 @@ const Cart = () => {
 
     try {
       const userInfo = JSON.parse(localStorage.getItem('userInfo') || 'null');
-      
       if (!userInfo) {
         setCouponError('Please login to apply coupon');
         setCouponLoading(false);
@@ -174,7 +117,6 @@ const Cart = () => {
       }
 
       const response = await validateCoupon(couponCode, subtotal);
-      
       if (response.success) {
         const couponData = {
           code: response.data.coupon.code,
@@ -189,23 +131,18 @@ const Cart = () => {
         setCouponSuccess(`Coupon applied! You saved ₹${response.data.discount}`);
         setCouponCode('');
         setShowCouponModal(false);
-        
-        // Save to localStorage
         localStorage.setItem('appliedCoupon', JSON.stringify(couponData));
-        
         toast.success('Coupon applied successfully!');
       } else {
         setCouponError(response.message || 'Invalid coupon code');
       }
     } catch (error) {
-      console.error('Apply coupon error:', error);
       setCouponError(error.response?.data?.message || 'Error applying coupon');
     } finally {
       setCouponLoading(false);
     }
   };
 
-  // ✅ REMOVE COUPON FUNCTION
   const handleRemoveCoupon = () => {
     setAppliedCoupon(null);
     setCouponError('');
@@ -215,495 +152,334 @@ const Cart = () => {
   };
 
   const checkoutHandler = () => {
-    if (cartItems.length === 0) {
-      toast.error('Your cart is empty');
-      return;
-    }
+    if (cartItems.length === 0) return toast.error('Your cart is empty');
+    if (cartItems.some(item => item.quantity > item.stock)) return toast.error('Some items are out of stock.');
     
-    // Check stock availability
-    const outOfStockItems = cartItems.filter(item => item.quantity > item.stock);
-    if (outOfStockItems.length > 0) {
-      toast.error(`Some items are out of stock. Please update quantities.`);
-      return;
-    }
-    
-    // Check if user is logged in
     const userInfo = JSON.parse(localStorage.getItem('userInfo') || 'null');
     if (!userInfo) {
       toast.info('Please login to proceed to checkout');
-      navigate('/login?redirect=/checkout');
-      return;
+      return navigate('/login?redirect=/checkout');
     }
     
-    // Check minimum order amount for coupon
-    if (appliedCoupon) {
-      const subtotal = calculateSubtotal();
-      if (subtotal < appliedCoupon.minOrderAmount) {
-        toast.error(`Coupon requires minimum order of ₹${appliedCoupon.minOrderAmount}`);
-        return;
-      }
+    if (appliedCoupon && calculateSubtotal() < appliedCoupon.minOrderAmount) {
+      return toast.error(`Coupon requires minimum order of ₹${appliedCoupon.minOrderAmount}`);
     }
     
-    // Save coupon to pass to checkout
-    if (appliedCoupon) {
-      localStorage.setItem('checkoutCoupon', JSON.stringify(appliedCoupon));
-    }
-    
+    if (appliedCoupon) localStorage.setItem('checkoutCoupon', JSON.stringify(appliedCoupon));
     navigate('/checkout');
   };
 
-  const getTotalItems = () => {
-    return cartItems.reduce((total, item) => total + item.quantity, 0);
-  };
-
-  const getSavingsAmount = () => {
-    const subtotal = calculateSubtotal();
-    const shippingSavings = subtotal >= 999 ? 100 : 0;
-    const couponSavings = calculateDiscount();
-    return shippingSavings + couponSavings;
-  };
-
-  if (loading) {
-    return (
-      <Container className="py-5 text-center">
-        <Spinner animation="border" variant="primary" />
-        <p className="mt-3">Loading your cart...</p>
-      </Container>
-    );
-  }
+  const getTotalItems = () => cartItems.reduce((total, item) => total + item.quantity, 0);
+  const getSavingsAmount = () => (calculateSubtotal() >= 999 ? 100 : 0) + calculateDiscount();
 
   return (
-    <Container className="py-5">
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h1 className="h2 fw-bold">
-          <FaShoppingCart className="me-2" />
-          Shopping Cart
+    <div className="container py-5">
+      <motion.div 
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="d-flex flex-wrap justify-content-between align-items-center mb-5"
+      >
+        <h1 className="h2 fw-bold gradient-text d-flex align-items-center gap-3">
+          <FaShoppingCart /> Shopping Cart
         </h1>
         {cartItems.length > 0 && (
-          <Badge bg="primary" pill className="px-3 py-2">
+          <div className="premium-badge badge-primary px-4 py-2 fs-5 mt-3 mt-md-0">
             {getTotalItems()} {getTotalItems() === 1 ? 'item' : 'items'}
-          </Badge>
+          </div>
         )}
-      </div>
+      </motion.div>
 
       {cartItems.length === 0 ? (
-        <Card className="text-center py-5 shadow-sm border-0">
-          <Card.Body className="py-5">
-            <div className="mb-4">
-              <FaShoppingCart size={100} className="text-muted opacity-25" />
-            </div>
-            <Card.Title className="h3 mb-3 text-muted">Your cart is empty</Card.Title>
-            <Card.Text className="text-muted mb-4">
-              Looks like you haven't added any products to your cart yet.
-            </Card.Text>
-            <Button variant="primary" size="lg" as={Link} to="/" className="px-4">
-              <FaHome className="me-2" />
-              Continue Shopping
-            </Button>
-          </Card.Body>
-        </Card>
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="glass-card text-center py-5 shadow-sm"
+        >
+          <div className="mb-4">
+            <FaShoppingCart size={100} className="text-muted opacity-25" />
+          </div>
+          <h3 className="fw-bold text-dark mb-3">Your cart is empty</h3>
+          <p className="text-muted mb-4 lead mx-auto" style={{ maxWidth: '500px' }}>
+            Looks like you haven't added any products to your cart yet. Discover something new!
+          </p>
+          <Link to="/" className="btn-premium px-5 py-3 d-inline-block text-decoration-none">
+            <FaHome className="me-2" /> Continue Shopping
+          </Link>
+        </motion.div>
       ) : (
-        <Row>
-          <Col lg={8}>
-            <Card className="shadow-sm border-0 mb-4">
-              <Card.Body className="p-0">
-                <div className="table-responsive">
-                  <Table hover className="mb-0">
-                    <thead className="bg-light">
-                      <tr>
-                        <th className="ps-4 py-3" style={{ width: '45%' }}>Product</th>
-                        <th className="py-3 text-center">Price</th>
-                        <th className="py-3 text-center">Quantity</th>
-                        <th className="py-3 text-center">Total</th>
-                        <th className="pe-4 py-3 text-center">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+        <div className="row g-5">
+          <div className="col-lg-8">
+            <motion.div 
+              initial={{ opacity: 0, x: -50 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="glass-panel overflow-hidden mb-4"
+            >
+              <div className="table-responsive">
+                <table className="table table-hover table-premium mb-0 align-middle">
+                  <thead className="bg-light">
+                    <tr>
+                      <th className="ps-4 py-4 text-muted fw-bold" style={{ width: '45%' }}>Product</th>
+                      <th className="py-4 text-center text-muted fw-bold">Price</th>
+                      <th className="py-4 text-center text-muted fw-bold">Quantity</th>
+                      <th className="py-4 text-center text-muted fw-bold">Total</th>
+                      <th className="pe-4 py-4 text-center text-muted fw-bold">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <AnimatePresence>
                       {cartItems.map((item) => (
-                        <tr key={item.product} className="align-middle">
-                          <td className="ps-4">
-                            <div className="d-flex align-items-center">
+                        <motion.tr 
+                          key={item.product}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, x: -50 }}
+                          layout
+                        >
+                          <td className="ps-4 py-4">
+                            <div className="d-flex align-items-center gap-3">
                               <img 
                                 src={item.image || 'https://via.placeholder.com/100x100?text=Product'} 
                                 alt={item.name}
-                                className="rounded me-3 border"
-                                style={{ 
-                                  width: '80px', 
-                                  height: '80px', 
-                                  objectFit: 'cover' 
-                                }}
-                                onError={(e) => {
-                                  e.target.src = 'https://via.placeholder.com/100x100?text=Product';
-                                }}
+                                className="rounded shadow-sm"
+                                style={{ width: '80px', height: '80px', objectFit: 'cover' }}
+                                onError={(e) => { e.target.src = 'https://via.placeholder.com/100x100?text=Product'; }}
                               />
                               <div>
-                                <Link 
-                                  to={`/product/${item.product}`} 
-                                  className="text-decoration-none fw-bold text-dark"
-                                >
+                                <Link to={`/product/${item.product}`} className="text-decoration-none fw-bold text-dark d-block mb-1 fs-6">
                                   {item.name}
                                 </Link>
-                                <div className="mt-1">
-                                  <small className="text-muted">
-                                    Stock: <span className={item.stock < 10 ? "text-danger fw-bold" : "text-success"}>
-                                      {item.stock} available
-                                    </span>
-                                  </small>
-                                  {item.stock < 10 && item.stock > 0 && (
-                                    <small className="ms-2 text-warning">
-                                      <FaExclamationTriangle className="me-1" />
-                                      Low stock
-                                    </small>
-                                  )}
-                                  {item.stock === 0 && (
-                                    <Badge bg="danger" className="ms-2">
-                                      Out of stock
-                                    </Badge>
-                                  )}
-                                </div>
+                                <small className={`fw-bold ${item.stock < 10 ? "text-danger" : "text-success"}`}>
+                                  {item.stock} available {item.stock < 10 && item.stock > 0 && <span className="ms-1 text-warning"><FaExclamationTriangle /> Low stock</span>}
+                                </small>
+                                {item.stock === 0 && <span className="premium-badge badge-danger ms-2">Out of stock</span>}
                               </div>
                             </div>
                           </td>
-                          <td className="text-center align-middle">
-                            <div className="fw-bold">
-                              <FaRupeeSign className="me-1" size={12} />
-                              {item.price.toLocaleString()}
-                            </div>
+                          <td className="text-center py-4 fw-bold text-muted">
+                            <FaRupeeSign className="me-1" size={14} />{item.price.toLocaleString()}
                           </td>
-                          <td className="text-center align-middle">
-                            <div className="d-flex align-items-center justify-content-center">
-                              <Button 
-                                variant="outline-secondary" 
-                                size="sm"
+                          <td className="text-center py-4">
+                            <div className="d-flex align-items-center justify-content-center bg-light rounded-pill p-1 mx-auto" style={{ width: 'fit-content' }}>
+                              <button 
+                                className="btn btn-sm btn-light rounded-circle border-0 text-muted"
                                 onClick={() => updateQuantity(item.product, item.quantity - 1)}
                                 disabled={item.quantity <= 1 || updatingItem === item.product}
-                                className="rounded-circle d-flex align-items-center justify-content-center"
                                 style={{ width: '32px', height: '32px' }}
                               >
-                                {updatingItem === item.product && item.quantity === 1 ? (
-                                  <Spinner size="sm" />
-                                ) : (
-                                  <FaMinus size={12} />
-                                )}
-                              </Button>
+                                {updatingItem === item.product && item.quantity === 1 ? <span className="spinner-border spinner-border-sm"></span> : <FaMinus size={10} />}
+                              </button>
                               
-                              <Form.Control
+                              <input
                                 type="number"
                                 min="1"
                                 max={item.stock}
                                 value={item.quantity}
-                                onChange={(e) => {
-                                  const value = parseInt(e.target.value) || 1;
-                                  updateQuantity(item.product, value);
-                                }}
-                                className="mx-2 text-center"
-                                style={{ width: '70px' }}
+                                onChange={(e) => updateQuantity(item.product, parseInt(e.target.value) || 1)}
+                                className="form-control border-0 bg-transparent text-center fw-bold shadow-none p-0"
+                                style={{ width: '40px' }}
                                 disabled={updatingItem === item.product}
                               />
                               
-                              <Button 
-                                variant="outline-secondary" 
-                                size="sm"
+                              <button 
+                                className="btn btn-sm btn-light rounded-circle border-0 text-muted"
                                 onClick={() => updateQuantity(item.product, item.quantity + 1)}
                                 disabled={item.quantity >= item.stock || updatingItem === item.product}
-                                className="rounded-circle d-flex align-items-center justify-content-center"
                                 style={{ width: '32px', height: '32px' }}
                               >
-                                {updatingItem === item.product ? (
-                                  <Spinner size="sm" />
-                                ) : (
-                                  <FaPlus size={12} />
-                                )}
-                              </Button>
+                                {updatingItem === item.product ? <span className="spinner-border spinner-border-sm"></span> : <FaPlus size={10} />}
+                              </button>
                             </div>
                           </td>
-                          <td className="text-center align-middle">
-                            <div className="fw-bold text-primary">
-                              <FaRupeeSign className="me-1" size={12} />
-                              {(item.price * item.quantity).toLocaleString()}
-                            </div>
+                          <td className="text-center py-4 fw-bold text-primary">
+                            <FaRupeeSign className="me-1" size={14} />{(item.price * item.quantity).toLocaleString()}
                           </td>
-                          <td className="text-center pe-4 align-middle">
-                            <Button 
-                              variant="outline-danger" 
-                              size="sm"
+                          <td className="text-center pe-4 py-4">
+                            <button 
+                              className="btn btn-light rounded-circle shadow-sm text-danger d-flex align-items-center justify-content-center mx-auto"
                               onClick={() => removeFromCart(item.product, item.name)}
-                              className="rounded-circle d-flex align-items-center justify-content-center"
-                              style={{ width: '36px', height: '36px' }}
+                              style={{ width: '40px', height: '40px' }}
                               title="Remove item"
                             >
-                              <FaTrash size={14} />
-                            </Button>
+                              <FaTrash size={16} />
+                            </button>
                           </td>
-                        </tr>
+                        </motion.tr>
                       ))}
-                    </tbody>
-                  </Table>
-                </div>
-              </Card.Body>
-            </Card>
+                    </AnimatePresence>
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
 
-            <div className="d-flex justify-content-between align-items-center mb-4">
-              <Button variant="outline-primary" as={Link} to="/" className="px-4">
-                <FaHome className="me-2" />
-                Continue Shopping
-              </Button>
-              
-              <div>
-                <Button 
-                  variant="outline-danger" 
-                  onClick={clearCart}
-                  className="me-2"
-                >
-                  <FaTrash className="me-2" />
-                  Clear Cart
-                </Button>
-                
-                <Button 
-                  variant="outline-secondary" 
-                  onClick={loadCartItems}
-                >
+            <div className="d-flex flex-wrap justify-content-between align-items-center gap-3">
+              <Link to="/" className="btn-premium-outline px-4">
+                <FaHome className="me-2" /> Continue Shopping
+              </Link>
+              <div className="d-flex gap-2">
+                <button className="btn btn-light border text-danger fw-bold" onClick={clearCart}>
+                  <FaTrash className="me-2" /> Clear Cart
+                </button>
+                <button className="btn btn-light border text-primary fw-bold" onClick={loadCartItems}>
                   Refresh Cart
-                </Button>
+                </button>
               </div>
             </div>
-          </Col>
+          </div>
 
-          <Col lg={4}>
-            <Card className="shadow-sm border-0 sticky-top" style={{ top: '20px' }}>
-              <Card.Body>
-                <Card.Title className="h4 mb-4 border-bottom pb-3">
-                  Order Summary
-                </Card.Title>
+          <div className="col-lg-4">
+            <motion.div 
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="sticky-top" 
+              style={{ top: '20px' }}
+            >
+              <div className="glass-card p-4">
+                <h4 className="fw-bold mb-4 pb-3 border-bottom text-dark">Order Summary</h4>
                 
-                <div className="mb-4">
-                  {/* Applied Coupon */}
-                  {appliedCoupon && (
-                    <Alert variant="success" className="p-2 mb-3">
-                      <div className="d-flex justify-content-between align-items-center">
-                        <div>
-                          <FaTag className="me-2" />
-                          <strong>{appliedCoupon.code}</strong>
-                          <small className="ms-2">
-                            ({appliedCoupon.discountType === 'percentage' 
-                              ? `${appliedCoupon.discountValue}%` 
-                              : `₹${appliedCoupon.discountValue}`})
-                          </small>
-                        </div>
-                        <Button 
-                          variant="link" 
-                          className="p-0 text-danger"
-                          onClick={handleRemoveCoupon}
-                          title="Remove coupon"
-                        >
-                          <FaTimes />
-                        </Button>
-                      </div>
-                    </Alert>
-                  )}
-                  
-                  {/* Items Count */}
-                  <div className="d-flex justify-content-between mb-3">
-                    <span className="text-muted">Items ({getTotalItems()})</span>
-                    <span className="fw-bold">
-                      <FaRupeeSign className="me-1" size={12} />
-                      {calculateSubtotal().toLocaleString()}
-                    </span>
+                {appliedCoupon && (
+                  <div className="alert alert-success p-3 rounded-4 mb-4 d-flex justify-content-between align-items-center border-0 shadow-sm">
+                    <div>
+                      <FaTag className="me-2 text-success" />
+                      <strong className="text-dark">{appliedCoupon.code}</strong>
+                      <small className="ms-2 text-success fw-bold">
+                        ({appliedCoupon.discountType === 'percentage' ? `${appliedCoupon.discountValue}%` : `₹${appliedCoupon.discountValue}`})
+                      </small>
+                    </div>
+                    <button className="btn btn-link p-0 text-danger" onClick={handleRemoveCoupon}>
+                      <FaTimes />
+                    </button>
+                  </div>
+                )}
+                
+                <div className="d-flex flex-column gap-3 mb-4 text-dark">
+                  <div className="d-flex justify-content-between">
+                    <span className="text-muted fw-bold">Items ({getTotalItems()})</span>
+                    <span className="fw-bold"><FaRupeeSign className="me-1" size={14} />{calculateSubtotal().toLocaleString()}</span>
                   </div>
                   
-                  {/* Shipping */}
-                  <div className="d-flex justify-content-between mb-3">
-                    <span className="text-muted">Shipping</span>
-                    <span className={calculateShipping() === 0 ? "text-success fw-bold" : ""}>
+                  <div className="d-flex justify-content-between">
+                    <span className="text-muted fw-bold">Shipping</span>
+                    <span className={calculateShipping() === 0 ? "text-success fw-bold" : "fw-bold"}>
                       {calculateShipping() === 0 ? (
-                        <>
-                          FREE
-                          <Badge bg="success" className="ms-2">Saved: ₹100</Badge>
-                        </>
+                        <>FREE <span className="premium-badge badge-success ms-2">Saved: ₹100</span></>
                       ) : (
-                        <>
-                          <FaRupeeSign className="me-1" size={12} />
-                          100
-                        </>
+                        <><FaRupeeSign className="me-1" size={14} />100</>
                       )}
                     </span>
                   </div>
                   
-                  {/* Tax */}
-                  <div className="d-flex justify-content-between mb-3">
-                    <span className="text-muted">Tax (18% GST)</span>
-                    <span>
-                      <FaRupeeSign className="me-1" size={12} />
-                      {calculateTax().toFixed(2)}
-                    </span>
+                  <div className="d-flex justify-content-between">
+                    <span className="text-muted fw-bold">Tax (18% GST)</span>
+                    <span className="fw-bold"><FaRupeeSign className="me-1" size={14} />{calculateTax().toFixed(2)}</span>
                   </div>
                   
-                  {/* Coupon Discount */}
                   {appliedCoupon && (
-                    <div className="d-flex justify-content-between mb-3">
-                      <span className="text-muted">Coupon Discount</span>
-                      <span className="text-success fw-bold">
-                        - <FaRupeeSign className="me-1" size={12} />
-                        {calculateDiscount().toFixed(2)}
-                      </span>
+                    <div className="d-flex justify-content-between text-success">
+                      <span className="fw-bold">Coupon Discount</span>
+                      <span className="fw-bold">- <FaRupeeSign className="me-1" size={14} />{calculateDiscount().toFixed(2)}</span>
                     </div>
                   )}
-                  
-                  <hr className="my-3" />
-                  
-                  {/* Total */}
-                  <div className="d-flex justify-content-between mb-4">
-                    <span className="h5 mb-0 fw-bold">Total Amount</span>
-                    <span className="h4 mb-0 text-primary fw-bold">
-                      <FaRupeeSign className="me-1" size={16} />
-                      {calculateTotal().toFixed(2)}
-                    </span>
-                  </div>
-                  
-                  {/* Total Savings */}
-                  {getSavingsAmount() > 0 && (
-                    <Alert variant="info" className="small text-center py-2 mb-4">
-                      <strong>Total Savings: ₹{getSavingsAmount().toFixed(2)}</strong>
-                    </Alert>
-                  )}
-                  
-                  {/* Free Shipping Alert */}
-                  {calculateSubtotal() < 999 && (
-                    <Alert variant="info" className="small text-center py-2 mb-4">
-                      <strong>Get FREE shipping!</strong><br />
-                      Add ₹<strong>{(999 - calculateSubtotal()).toFixed(2)}</strong> more to save ₹100
-                    </Alert>
-                  )}
                 </div>
+                
+                <hr className="my-4 text-muted opacity-25" />
+                
+                <div className="d-flex justify-content-between mb-4 align-items-center">
+                  <span className="fs-5 fw-bold text-dark">Total</span>
+                  <span className="fs-3 fw-bold gradient-text"><FaRupeeSign className="me-1" size={24} />{calculateTotal().toFixed(2)}</span>
+                </div>
+                
+                {getSavingsAmount() > 0 && (
+                  <div className="alert alert-info border-0 shadow-sm rounded-4 text-center py-3 mb-4 fw-bold">
+                    🎉 Total Savings: ₹{getSavingsAmount().toFixed(2)}
+                  </div>
+                )}
+                
+                {calculateSubtotal() < 999 && (
+                  <div className="alert alert-warning border-0 shadow-sm rounded-4 text-center py-3 mb-4 fw-bold">
+                    <span className="d-block mb-1">🚚 Get FREE shipping!</span>
+                    Add ₹<strong className="text-dark">{(999 - calculateSubtotal()).toFixed(2)}</strong> more to save ₹100
+                  </div>
+                )}
 
-                {/* Apply Coupon Button */}
-                <Button 
-                  variant="outline-primary" 
-                  className="w-100 mb-3"
+                <button 
+                  className="btn-premium-outline w-100 mb-3 py-3"
                   onClick={() => setShowCouponModal(true)}
                 >
-                  <FaTag className="me-2" />
-                  {appliedCoupon ? 'Change Coupon' : 'Apply Coupon'}
-                </Button>
+                  <FaTag className="me-2" /> {appliedCoupon ? 'Change Coupon' : 'Apply Coupon'}
+                </button>
 
-                <Button 
-                  variant="primary" 
-                  size="lg" 
-                  className="w-100 py-3 mb-3 fw-bold shadow-sm"
+                <button 
+                  className="btn-premium w-100 py-3 mb-4 shadow-sm fw-bold fs-5"
                   onClick={checkoutHandler}
                   disabled={cartItems.length === 0}
                 >
-                  <FaArrowRight className="me-2" />
-                  Proceed to Checkout
-                </Button>
+                  Proceed to Checkout <FaArrowRight className="ms-2" />
+                </button>
 
-                <div className="text-center small text-muted">
-                  <p className="mb-1">
-                    <FaExclamationTriangle className="me-1" />
-                    Secure checkout with SSL encryption
+                <div className="text-center text-muted small p-3 bg-light rounded-4 border">
+                  <p className="mb-2 fw-bold d-flex align-items-center justify-content-center gap-2 text-dark">
+                    <FaShieldAlt className="text-success" /> 100% Secure Checkout
                   </p>
-                  <p className="mb-0">
-                    By placing your order, you agree to our Terms & Conditions
-                  </p>
+                  <p className="mb-0">Your payment information is encrypted and secure. By placing your order, you agree to our Terms & Conditions.</p>
                 </div>
-              </Card.Body>
-            </Card>
-            
-            {/* Security Info */}
-            <Card className="shadow-sm border-0 mt-4 bg-light">
-              <Card.Body className="p-3">
-                <div className="d-flex align-items-center">
-                  <div className="bg-white rounded-circle p-2 me-3">
-                    <FaExclamationTriangle className="text-primary" />
-                  </div>
-                  <div>
-                    <p className="small mb-0">
-                      <strong>100% Secure Checkout</strong><br />
-                      Your payment information is encrypted and secure
-                    </p>
-                  </div>
-                </div>
-              </Card.Body>
-            </Card>
-          </Col>
-        </Row>
+              </div>
+            </motion.div>
+          </div>
+        </div>
       )}
 
       {/* Coupon Modal */}
-      <Modal show={showCouponModal} onHide={() => setShowCouponModal(false)}>
-        <Modal.Header closeButton>
-          <Modal.Title>
-            <FaTag className="me-2" />
-            Apply Coupon Code
-          </Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          {couponSuccess && (
-            <Alert variant="success" className="py-2">
-              <FaCheck className="me-2" />
-              {couponSuccess}
-            </Alert>
-          )}
+      <Modal show={showCouponModal} onHide={() => setShowCouponModal(false)} centered>
+        <div className="glass-card border-0 p-4">
+          <div className="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3">
+            <h4 className="fw-bold m-0 d-flex align-items-center gap-2"><FaTag className="text-primary" /> Apply Coupon</h4>
+            <button className="btn btn-light rounded-circle p-2" onClick={() => setShowCouponModal(false)}><FaTimes /></button>
+          </div>
           
-          {couponError && (
-            <Alert variant="danger" className="py-2">
-              <FaTimes className="me-2" />
-              {couponError}
-            </Alert>
-          )}
-          
-          <Form.Group className="mb-3">
-            <Form.Label>Enter Coupon Code</Form.Label>
-            <InputGroup>
-              <Form.Control
+          <div className="mb-4">
+            {couponSuccess && <div className="alert alert-success rounded-3 fw-bold"><FaCheck className="me-2" />{couponSuccess}</div>}
+            {couponError && <div className="alert alert-danger rounded-3 fw-bold"><FaTimes className="me-2" />{couponError}</div>}
+            
+            <label className="fw-bold text-muted mb-2">Enter Coupon Code</label>
+            <div className="d-flex gap-2">
+              <input
                 type="text"
                 placeholder="e.g., WELCOME20"
                 value={couponCode}
                 onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
                 disabled={couponLoading}
+                className="input-premium flex-grow-1"
               />
-              <Button 
-                variant="primary"
+              <button 
+                className="btn-premium px-4"
                 onClick={handleApplyCoupon}
                 disabled={couponLoading || !couponCode.trim()}
               >
-                {couponLoading ? (
-                  <Spinner size="sm" animation="border" />
-                ) : (
-                  'Apply'
-                )}
-              </Button>
-            </InputGroup>
-            <Form.Text className="text-muted">
-              Enter your coupon code and click apply
-            </Form.Text>
-          </Form.Group>
+                {couponLoading ? <span className="spinner-border spinner-border-sm"></span> : 'Apply'}
+              </button>
+            </div>
+          </div>
           
-          <div className="mt-4">
-            <h6>Available Coupons:</h6>
-            <div className="small">
-              <div className="d-flex justify-content-between mb-2">
-                <span className="fw-bold">WELCOME20</span>
-                <span>20% off on min. ₹500</span>
+          <div className="p-4 bg-light rounded-4 border">
+            <h6 className="fw-bold mb-3 text-dark">Available Coupons:</h6>
+            <div className="d-flex flex-column gap-3">
+              <div className="d-flex justify-content-between align-items-center bg-white p-3 rounded-3 shadow-sm border">
+                <span className="premium-badge badge-primary px-3 py-2 fs-6">WELCOME20</span>
+                <span className="text-muted fw-bold">20% off on min. ₹500</span>
               </div>
-              <div className="d-flex justify-content-between mb-2">
-                <span className="fw-bold">SUMMER50</span>
-                <span>₹50 off on min. ₹300</span>
+              <div className="d-flex justify-content-between align-items-center bg-white p-3 rounded-3 shadow-sm border">
+                <span className="premium-badge badge-primary px-3 py-2 fs-6">SUMMER50</span>
+                <span className="text-muted fw-bold">₹50 off on min. ₹300</span>
               </div>
-              <div className="d-flex justify-content-between">
-                <span className="fw-bold">FREESHIP</span>
-                <span>Free shipping on all orders</span>
+              <div className="d-flex justify-content-between align-items-center bg-white p-3 rounded-3 shadow-sm border">
+                <span className="premium-badge badge-primary px-3 py-2 fs-6">FREESHIP</span>
+                <span className="text-muted fw-bold">Free shipping on all orders</span>
               </div>
             </div>
           </div>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowCouponModal(false)}>
-            Close
-          </Button>
-        </Modal.Footer>
+        </div>
       </Modal>
-    </Container>
+    </div>
   );
 };
 

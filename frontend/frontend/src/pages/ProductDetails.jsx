@@ -1,28 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Container, Row, Col, Card, Button, Form, Alert, Badge, Tabs, Tab } from 'react-bootstrap';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  FaShoppingCart, 
-  FaRupeeSign, 
-  FaArrowLeft, 
-  FaShareAlt, 
-  FaHeart,
-  FaStar,
-  FaTruck,
-  FaShieldAlt,
-  FaUndo,
-  FaTag
+  FaShoppingCart, FaRupeeSign, FaArrowLeft, FaShareAlt, 
+  FaHeart, FaStar, FaTruck, FaShieldAlt, FaUndo, FaTag
 } from 'react-icons/fa';
 import { toast } from 'react-toastify';
 import Loader, { PageLoader } from '../components/Loader';
 import { getProductById, createProductReview, deleteProductReview, saveCartToLocalStorage, getCartFromLocalStorage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import ProductCard from '../components/ProductCard';
 
 const ProductDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  
   const { user } = useAuth();
+  
   const [product, setProduct] = useState(null);
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -43,24 +36,20 @@ const ProductDetails = () => {
       setProduct(data.data || data);
       if (showLoader) setLoading(false);
       
-      // TODO: Fetch related products based on category
-      // For now, we'll use a mock
+      // Mock related products
       setRelatedProducts([
         { _id: '1', name: 'Related Product 1', price: 999, image: 'https://via.placeholder.com/150' },
         { _id: '2', name: 'Related Product 2', price: 1499, image: 'https://via.placeholder.com/150' },
       ]);
       
     } catch (err) {
-      console.error('Error fetching product:', err);
       setError('Product not found or server error');
       if (showLoader) setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (id) {
-      fetchProduct(true);
-    }
+    if (id) fetchProduct(true);
   }, [id]);
 
   const submitReviewHandler = async (e) => {
@@ -75,7 +64,7 @@ const ProductDetails = () => {
       toast.success('Review submitted successfully!');
       setComment('');
       setRating(5);
-      fetchProduct(false); // reload product without full screen loading spinner
+      fetchProduct(false); 
     } catch (err) {
       toast.error(err.message || 'Failed to submit review');
     } finally {
@@ -88,7 +77,7 @@ const ProductDetails = () => {
       try {
         await deleteProductReview(product._id, reviewId);
         toast.success('Review deleted successfully');
-        fetchProduct(false); // reload product details
+        fetchProduct(false);
       } catch (err) {
         toast.error(err.message || 'Failed to delete review');
       }
@@ -120,10 +109,7 @@ const ProductDetails = () => {
       
       saveCartToLocalStorage(cartItems);
       toast.success(`${quantity} × ${product.name} added to cart!`);
-      
-      // Dispatch cart update event
       window.dispatchEvent(new Event('cartUpdated'));
-      
     } catch (error) {
       toast.error('Failed to add to cart');
     }
@@ -136,443 +122,317 @@ const ProductDetails = () => {
 
   const toggleWishlist = () => {
     setIsInWishlist(!isInWishlist);
-    toast.success(
-      isInWishlist 
-        ? 'Removed from wishlist' 
-        : 'Added to wishlist'
-    );
+    toast.success(isInWishlist ? 'Removed from wishlist' : 'Added to wishlist');
   };
 
   if (loading) return <PageLoader />;
 
   if (error || !product) {
     return (
-      <Container className="py-5">
-        <Alert variant="danger" className="text-center">
-          {error || 'Product not found'}
-        </Alert>
-        <div className="text-center">
-          <Button variant="outline-primary" onClick={() => navigate('/')}>
-            <FaArrowLeft className="me-2" />
-            Back to Home
-          </Button>
+      <div className="container py-5 text-center">
+        <div className="alert alert-danger d-inline-block rounded-4 shadow-sm p-4">
+          <h4 className="fw-bold">Oops!</h4>
+          <p>{error || 'Product not found'}</p>
+          <button className="btn-premium mt-2" onClick={() => navigate('/')}>
+            <FaArrowLeft className="me-2" /> Back to Home
+          </button>
         </div>
-      </Container>
+      </div>
     );
   }
 
   return (
-    <Container className="py-4">
+    <div className="container py-4">
       {/* Breadcrumb */}
       <nav aria-label="breadcrumb" className="mb-4">
         <ol className="breadcrumb">
-          <li className="breadcrumb-item">
-            <a href="/" className="text-decoration-none">Home</a>
-          </li>
-          <li className="breadcrumb-item">
-            <a href="/products" className="text-decoration-none">Products</a>
-          </li>
-          <li className="breadcrumb-item">
-            <a href={`/category/${product.category}`} className="text-decoration-none">
-              {product.category}
-            </a>
-          </li>
-          <li className="breadcrumb-item active" aria-current="page">
-            {product.name}
-          </li>
+          <li className="breadcrumb-item"><a href="/" className="text-decoration-none text-muted">Home</a></li>
+          <li className="breadcrumb-item"><a href="/products" className="text-decoration-none text-muted">Products</a></li>
+          <li className="breadcrumb-item"><a href={`/products?category=${product.category}`} className="text-decoration-none text-muted">{product.category}</a></li>
+          <li className="breadcrumb-item active fw-bold text-dark" aria-current="page">{product.name}</li>
         </ol>
       </nav>
 
-      <Row>
+      <div className="row g-5 mb-5">
         {/* Product Images */}
-        <Col lg={6} className="mb-4">
-          <Card className="shadow-sm border-0">
-            <Card.Body className="text-center p-4">
-              <img 
-                src={product.image || 'https://via.placeholder.com/500x500?text=No+Image'} 
-                alt={product.name}
-                className="img-fluid rounded"
-                style={{ maxHeight: '400px', objectFit: 'contain' }}
-                onError={(e) => {
-                  e.target.src = 'https://via.placeholder.com/500x500?text=No+Image';
-                }}
-              />
-              <div className="d-flex justify-content-center gap-2 mt-3">
-                {[1, 2, 3, 4].map((num) => (
-                  <img 
-                    key={num}
-                    src={product.image || 'https://via.placeholder.com/80x80?text=Thumb'} 
-                    alt={`Thumb ${num}`}
-                    className="img-thumbnail"
-                    style={{ width: '80px', height: '80px', cursor: 'pointer' }}
-                  />
-                ))}
+        <div className="col-lg-6">
+          <motion.div 
+            initial={{ opacity: 0, x: -50 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="product-image-frame shadow-sm"
+          >
+            <img 
+              src={product.image || 'https://via.placeholder.com/500x500?text=No+Image'} 
+              alt={product.name}
+              onError={(e) => { e.target.src = 'https://via.placeholder.com/500x500?text=No+Image'; }}
+            />
+          </motion.div>
+          
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="d-flex justify-content-center gap-3 mt-4"
+          >
+            {[1, 2, 3, 4].map((num) => (
+              <div key={num} className="glass-panel p-1 cursor-pointer" style={{ width: '80px', height: '80px' }}>
+                <img 
+                  src={product.image || 'https://via.placeholder.com/80x80?text=Thumb'} 
+                  alt={`Thumb ${num}`}
+                  className="w-100 h-100 object-fit-cover rounded"
+                />
               </div>
-            </Card.Body>
-          </Card>
-        </Col>
+            ))}
+          </motion.div>
+        </div>
 
         {/* Product Info */}
-        <Col lg={6}>
-          <Card className="shadow-sm border-0 h-100">
-            <Card.Body className="p-4">
-              <div className="d-flex justify-content-between align-items-start mb-3">
-                <div>
-                  <Badge bg="secondary" className="mb-2">
-                    {product.category || 'Uncategorized'}
-                  </Badge>
-                  <h1 className="h3 fw-bold mb-2">{product.name}</h1>
-                  <div className="d-flex align-items-center mb-3">
-                    <div className="text-warning me-2">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <FaStar 
-                          key={star} 
-                          size={16} 
-                          className="me-1" 
-                          color={star <= (product.rating || 0) ? '#ffc107' : '#e4e5e9'}
-                        />
-                      ))}
-                    </div>
-                    <span className="text-muted">
-                      ({(product.rating || 0).toFixed(1)} • {product.numReviews || 0} {product.numReviews === 1 ? 'review' : 'reviews'})
-                    </span>
-                  </div>
-                </div>
-                <div>
-                  <Button 
-                    variant={isInWishlist ? "danger" : "outline-danger"} 
-                    size="sm"
-                    onClick={toggleWishlist}
-                    className="rounded-circle"
-                    style={{ width: '40px', height: '40px' }}
-                  >
-                    <FaHeart />
-                  </Button>
-                  <Button 
-                    variant="outline-primary" 
-                    size="sm"
-                    className="rounded-circle ms-2"
-                    style={{ width: '40px', height: '40px' }}
-                  >
-                    <FaShareAlt />
-                  </Button>
-                </div>
-              </div>
-
-              <div className="mb-4">
+        <div className="col-lg-6">
+          <motion.div 
+            initial={{ opacity: 0, x: 50 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="glass-card p-5 h-100 d-flex flex-column"
+          >
+            <div className="d-flex justify-content-between align-items-start mb-3">
+              <div>
+                <span className="premium-badge badge-info mb-3 d-inline-block">{product.category || 'Uncategorized'}</span>
+                <h1 className="h2 fw-bold mb-3 text-dark">{product.name}</h1>
                 <div className="d-flex align-items-center">
-                  <h2 className="text-primary fw-bold mb-0 me-3">
-                    <FaRupeeSign />
-                    {product.price?.toLocaleString() || '0'}
-                  </h2>
-                  {product.originalPrice && (
-                    <span className="text-muted text-decoration-line-through me-2">
-                      ₹{product.originalPrice.toLocaleString()}
-                    </span>
-                  )}
-                  {product.originalPrice && (
-                    <Badge bg="danger">
-                      Save {Math.round((1 - product.price/product.originalPrice) * 100)}%
-                    </Badge>
-                  )}
+                  <div className="text-warning me-2 d-flex">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <FaStar key={star} size={18} color={star <= (product.rating || 0) ? '#f59e0b' : '#e5e7eb'} />
+                    ))}
+                  </div>
+                  <span className="text-muted fw-bold">
+                    {(product.rating || 0).toFixed(1)} <span className="fw-normal mx-1">•</span> {product.numReviews || 0} reviews
+                  </span>
                 </div>
               </div>
+              <div className="d-flex gap-2">
+                <button 
+                  onClick={toggleWishlist}
+                  className="btn btn-light rounded-circle shadow-sm d-flex align-items-center justify-content-center"
+                  style={{ width: '45px', height: '45px', color: isInWishlist ? '#ef4444' : '#9ca3af' }}
+                >
+                  <FaHeart size={20} />
+                </button>
+                <button 
+                  className="btn btn-light rounded-circle shadow-sm d-flex align-items-center justify-content-center text-primary"
+                  style={{ width: '45px', height: '45px' }}
+                >
+                  <FaShareAlt size={18} />
+                </button>
+              </div>
+            </div>
 
-              <div className="mb-4">
-                <div className="d-flex align-items-center mb-3">
-                  <Badge bg={product.stock > 10 ? "success" : product.stock > 0 ? "warning" : "danger"} className="me-2">
-                    {product.stock > 0 ? `${product.stock} in stock` : 'Out of stock'}
-                  </Badge>
-                  <small className="text-muted">Product ID: {product._id}</small>
+            <hr className="text-muted opacity-25 my-4" />
+
+            <div className="mb-4 d-flex align-items-center flex-wrap gap-3">
+              <h2 className="gradient-text fw-bold mb-0 display-5">
+                <FaRupeeSign size={30} className="mb-1" />{product.price?.toLocaleString() || '0'}
+              </h2>
+              {product.originalPrice && (
+                <>
+                  <span className="text-muted text-decoration-line-through fs-5">
+                    ₹{product.originalPrice.toLocaleString()}
+                  </span>
+                  <span className="premium-badge badge-danger px-3 py-2 fs-6">
+                    Save {Math.round((1 - product.price/product.originalPrice) * 100)}%
+                  </span>
+                </>
+              )}
+            </div>
+
+            <div className="mb-5">
+              <div className="d-flex align-items-center mb-4">
+                <span className={`premium-badge ${product.stock > 10 ? 'badge-success' : product.stock > 0 ? 'badge-warning' : 'badge-danger'} me-3 px-3 py-2`}>
+                  {product.stock > 0 ? `${product.stock} in stock` : 'Out of stock'}
+                </span>
+                <small className="text-muted fw-bold">SKU: {product._id?.substring(0, 8).toUpperCase()}</small>
+              </div>
+              
+              <div className="d-flex flex-wrap gap-4 p-3 bg-light rounded-3 border">
+                <div className="d-flex align-items-center text-dark fw-bold small">
+                  <FaTruck className="me-2 text-primary fs-5" /> Free Delivery
                 </div>
-                
-                <div className="d-flex flex-wrap gap-2 mb-4">
-                  <div className="d-flex align-items-center text-muted">
-                    <FaTruck className="me-2" /> Free Delivery
-                  </div>
-                  <div className="d-flex align-items-center text-muted">
-                    <FaShieldAlt className="me-2" /> 1 Year Warranty
-                  </div>
-                  <div className="d-flex align-items-center text-muted">
-                    <FaUndo className="me-2" /> 30 Days Return
-                  </div>
+                <div className="d-flex align-items-center text-dark fw-bold small">
+                  <FaShieldAlt className="me-2 text-success fs-5" /> 1 Year Warranty
+                </div>
+                <div className="d-flex align-items-center text-dark fw-bold small">
+                  <FaUndo className="me-2 text-danger fs-5" /> 30 Days Return
                 </div>
               </div>
+            </div>
 
+            <div className="mt-auto">
               {product.stock > 0 ? (
                 <>
-                  <Form.Group className="mb-4" controlId="quantity">
-                    <Form.Label className="fw-bold">Quantity</Form.Label>
-                    <div className="d-flex align-items-center" style={{ maxWidth: '200px' }}>
-                      <Button 
-                        variant="outline-secondary" 
-                        size="sm"
-                        onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                        disabled={quantity <= 1}
-                        className="px-3"
-                      >
-                        -
-                      </Button>
-                      <Form.Control
-                        type="number"
-                        min="1"
-                        max={product.stock}
-                        value={quantity}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value);
-                          if (val >= 1 && val <= product.stock) {
-                            setQuantity(val);
-                          }
-                        }}
-                        className="mx-2 text-center"
-                      />
-                      <Button 
-                        variant="outline-secondary" 
-                        size="sm"
-                        onClick={() => setQuantity(Math.min(product.stock, quantity + 1))}
-                        disabled={quantity >= product.stock}
-                        className="px-3"
-                      >
-                        +
-                      </Button>
+                  <div className="mb-4">
+                    <label className="fw-bold mb-2 text-muted">Quantity</label>
+                    <div className="d-flex align-items-center gap-3">
+                      <div className="d-flex align-items-center bg-white border rounded-pill overflow-hidden" style={{ width: '140px' }}>
+                        <button className="btn border-0 text-muted px-3" onClick={() => setQuantity(Math.max(1, quantity - 1))} disabled={quantity <= 1}>-</button>
+                        <input type="number" className="form-control border-0 text-center shadow-none fw-bold bg-transparent px-0" value={quantity} readOnly />
+                        <button className="btn border-0 text-muted px-3" onClick={() => setQuantity(Math.min(product.stock, quantity + 1))} disabled={quantity >= product.stock}>+</button>
+                      </div>
                     </div>
-                    <Form.Text className="text-muted">
-                      Available: {product.stock} units
-                    </Form.Text>
-                  </Form.Group>
+                  </div>
 
-                  <div className="d-grid gap-3">
-                    <Button 
-                      variant="primary" 
-                      size="lg"
-                      onClick={addToCartHandler}
-                      className="py-3 fw-bold"
-                    >
-                      <FaShoppingCart className="me-2" />
-                      Add to Cart
-                    </Button>
-                    
-                    <Button 
-                      variant="success" 
-                      size="lg"
-                      onClick={buyNowHandler}
-                      className="py-3 fw-bold"
-                    >
+                  <div className="d-flex gap-3">
+                    <button className="btn-premium-outline flex-grow-1 py-3 fs-6" onClick={addToCartHandler}>
+                      <FaShoppingCart className="me-2" /> Add to Cart
+                    </button>
+                    <button className="btn-premium flex-grow-1 py-3 fs-6" onClick={buyNowHandler}>
                       Buy Now
-                    </Button>
+                    </button>
                   </div>
                 </>
               ) : (
-                <Alert variant="warning">
-                  <FaTag className="me-2" />
-                  This product is currently out of stock. Check back soon!
-                </Alert>
+                <div className="alert alert-warning d-flex align-items-center fw-bold py-3 rounded-3">
+                  <FaTag className="me-3 fs-4" /> This product is currently out of stock.
+                </div>
               )}
+            </div>
+          </motion.div>
+        </div>
+      </div>
 
-              <div className="mt-4 pt-3 border-top">
-                <div className="d-flex flex-wrap gap-3">
-                  <div>
-                    <small className="text-muted d-block">SKU</small>
-                    <strong>SKU-{product._id?.substring(0, 8)}</strong>
+      {/* Tabs Section */}
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="glass-panel mb-5 overflow-hidden"
+      >
+        <div className="d-flex border-bottom bg-light">
+          {['description', 'specifications', 'reviews'].map((tab) => (
+            <button
+              key={tab}
+              className={`btn border-0 py-3 px-4 fw-bold text-capitalize rounded-0 ${activeTab === tab ? 'text-primary bg-white border-bottom border-primary border-3' : 'text-muted'}`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {tab} {tab === 'reviews' && `(${product.numReviews || 0})`}
+            </button>
+          ))}
+        </div>
+        
+        <div className="p-5 bg-white">
+          <AnimatePresence mode="wait">
+            {activeTab === 'description' && (
+              <motion.div key="desc" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <h4 className="fw-bold mb-4">Product Description</h4>
+                <p className="text-muted lh-lg fs-5">{product.description}</p>
+              </motion.div>
+            )}
+            
+            {activeTab === 'specifications' && (
+              <motion.div key="specs" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <h4 className="fw-bold mb-4">Specifications</h4>
+                <div className="table-responsive">
+                  <table className="table table-premium">
+                    <tbody>
+                      <tr><th style={{ width: '30%' }}>Brand</th><td>ShopEasy</td></tr>
+                      <tr><th>Model</th><td>{product.name}</td></tr>
+                      <tr><th>Category</th><td>{product.category}</td></tr>
+                      <tr><th>Stock Status</th><td>{product.stock > 0 ? 'In Stock' : 'Out of Stock'}</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </motion.div>
+            )}
+
+            {activeTab === 'reviews' && (
+              <motion.div key="reviews" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <div className="row g-5">
+                  <div className="col-lg-7">
+                    <h4 className="fw-bold mb-4">Customer Reviews</h4>
+                    {!product.reviews || product.reviews.length === 0 ? (
+                      <p className="text-muted bg-light p-4 rounded-3 border">No reviews yet. Be the first to review!</p>
+                    ) : (
+                      <div className="d-flex flex-column gap-4">
+                        {product.reviews.map((review) => (
+                          <div key={review._id} className="p-4 bg-light rounded-4 border">
+                            <div className="d-flex justify-content-between align-items-center mb-3">
+                              <div className="d-flex align-items-center gap-3">
+                                <div className="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center fw-bold" style={{ width: '40px', height: '40px' }}>
+                                  {review.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <div className="fw-bold">{review.name}</div>
+                                  <small className="text-muted">{new Date(review.createdAt).toLocaleDateString()}</small>
+                                </div>
+                              </div>
+                              <div className="d-flex">
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                  <FaStar key={star} size={14} color={star <= review.rating ? '#f59e0b' : '#e5e7eb'} />
+                                ))}
+                              </div>
+                            </div>
+                            <p className="text-secondary mb-0">{review.comment}</p>
+                            {user && (user._id === review.user || user.role === 'admin') && (
+                              <button className="btn btn-link text-danger p-0 mt-3 text-decoration-none fw-bold fs-6" onClick={() => deleteReviewHandler(review._id)}>
+                                Delete Review
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <small className="text-muted d-block">Category</small>
-                    <strong>{product.category}</strong>
-                  </div>
-                  <div>
-                    <small className="text-muted d-block">Added</small>
-                    <strong>{new Date(product.createdAt).toLocaleDateString()}</strong>
+                  
+                  <div className="col-lg-5">
+                    <h4 className="fw-bold mb-4">Write a Review</h4>
+                    {user ? (
+                      product.reviews?.some((r) => r.user?.toString() === user?._id?.toString()) ? (
+                        <div className="alert alert-success rounded-3 fw-bold">You have already reviewed this product.</div>
+                      ) : (
+                        <form onSubmit={submitReviewHandler} className="bg-light p-4 rounded-4 border shadow-sm">
+                          <div className="mb-3">
+                            <label className="fw-bold text-muted mb-2">Rating</label>
+                            <select value={rating} onChange={(e) => setRating(Number(e.target.value))} className="input-premium bg-white w-100">
+                              <option value="5">5 - Excellent</option>
+                              <option value="4">4 - Very Good</option>
+                              <option value="3">3 - Good</option>
+                              <option value="2">2 - Fair</option>
+                              <option value="1">1 - Poor</option>
+                            </select>
+                          </div>
+                          <div className="mb-4">
+                            <label className="fw-bold text-muted mb-2">Review</label>
+                            <textarea rows={4} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Share your thoughts..." className="input-premium bg-white w-100" required />
+                          </div>
+                          <button type="submit" className="btn-premium w-100" disabled={submittingReview}>
+                            {submittingReview ? 'Submitting...' : 'Submit Review'}
+                          </button>
+                        </form>
+                      )
+                    ) : (
+                      <div className="alert alert-warning rounded-3">
+                        Please <Link to="/login" className="fw-bold text-dark">login</Link> to write a review.
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
-
-      {/* Product Tabs */}
-      <Row className="mt-4">
-        <Col>
-          <Card className="shadow-sm border-0">
-            <Card.Body>
-              <Tabs
-                activeKey={activeTab}
-                onSelect={(k) => setActiveTab(k)}
-                className="mb-3"
-              >
-                <Tab eventKey="description" title="Description">
-                  <div className="p-3">
-                    <h4>Product Description</h4>
-                    <p className="text-muted">{product.description}</p>
-                  </div>
-                </Tab>
-                <Tab eventKey="specifications" title="Specifications">
-                  <div className="p-3">
-                    <h4>Specifications</h4>
-                    <table className="table">
-                      <tbody>
-                        <tr>
-                          <td><strong>Brand</strong></td>
-                          <td>ShopEasy</td>
-                        </tr>
-                        <tr>
-                          <td><strong>Model</strong></td>
-                          <td>{product.name}</td>
-                        </tr>
-                        <tr>
-                          <td><strong>Category</strong></td>
-                          <td>{product.category}</td>
-                        </tr>
-                        <tr>
-                          <td><strong>Stock</strong></td>
-                          <td>{product.stock} units</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </Tab>
-                <Tab eventKey="reviews" title={`Reviews (${product.numReviews || 0})`}>
-                  <div className="p-3">
-                    <Row>
-                      <Col md={6} className="mb-4">
-                        <h4 className="mb-4">Customer Reviews</h4>
-                        {!product.reviews || product.reviews.length === 0 ? (
-                          <Alert variant="info">No reviews yet. Be the first to review!</Alert>
-                        ) : (
-                          <div className="d-flex flex-column gap-3">
-                            {product.reviews.map((review) => (
-                              <Card key={review._id} className="border-0 bg-light shadow-sm">
-                                <Card.Body className="p-3">
-                                  <div className="d-flex justify-content-between align-items-center mb-2">
-                                    <strong>{review.name}</strong>
-                                    <small className="text-muted">
-                                      {new Date(review.createdAt).toLocaleDateString(undefined, {
-                                        year: 'numeric',
-                                        month: 'short',
-                                        day: 'numeric'
-                                      })}
-                                    </small>
-                                  </div>
-                                  <div className="text-warning mb-2">
-                                    {[1, 2, 3, 4, 5].map((star) => (
-                                      <FaStar 
-                                        key={star} 
-                                        size={14} 
-                                        color={star <= review.rating ? '#ffc107' : '#e4e5e9'}
-                                        className="me-1"
-                                      />
-                                    ))}
-                                  </div>
-                                  <p className="mb-0 text-secondary" style={{ whiteSpace: 'pre-line' }}>
-                                    {review.comment}
-                                  </p>
-                                  {user && (user._id === review.user || user.role === 'admin') && (
-                                    <div className="text-end mt-2">
-                                      <Button 
-                                        variant="link" 
-                                        className="text-danger p-0 text-decoration-none" 
-                                        size="sm"
-                                        onClick={() => deleteReviewHandler(review._id)}
-                                      >
-                                        Delete Review
-                                      </Button>
-                                    </div>
-                                  )}
-                                </Card.Body>
-                              </Card>
-                            ))}
-                          </div>
-                        )}
-                      </Col>
-
-                      <Col md={6}>
-                        <h4 className="mb-4">Write a Review</h4>
-                        {user ? (
-                          product.reviews?.some((r) => r.user?.toString() === user?._id?.toString()) ? (
-                            <Alert variant="success">
-                              You have already reviewed this product. Thank you!
-                            </Alert>
-                          ) : (
-                            <Form onSubmit={submitReviewHandler} className="bg-light p-4 rounded shadow-sm">
-                              <Form.Group className="mb-3" controlId="review-rating">
-                                <Form.Label className="fw-bold">Rating</Form.Label>
-                                <Form.Select 
-                                  value={rating} 
-                                  onChange={(e) => setRating(Number(e.target.value))}
-                                  className="w-auto"
-                                >
-                                  <option value="5">5 - Excellent</option>
-                                  <option value="4">4 - Very Good</option>
-                                  <option value="3">3 - Good</option>
-                                  <option value="2">2 - Fair</option>
-                                  <option value="1">1 - Poor</option>
-                                </Form.Select>
-                              </Form.Group>
-
-                              <Form.Group className="mb-3" controlId="review-comment">
-                                <Form.Label className="fw-bold">Review Comment</Form.Label>
-                                <Form.Control 
-                                  as="textarea" 
-                                  rows={4} 
-                                  value={comment}
-                                  onChange={(e) => setComment(e.target.value)}
-                                  placeholder="Share your thoughts about this product..."
-                                  required
-                                />
-                              </Form.Group>
-
-                              <Button 
-                                type="submit" 
-                                variant="primary" 
-                                disabled={submittingReview}
-                                className="fw-bold px-4 py-2"
-                              >
-                                {submittingReview ? 'Submitting...' : 'Submit Review'}
-                              </Button>
-                            </Form>
-                          )
-                        ) : (
-                          <Alert variant="warning">
-                            Please <a href="/login" className="alert-link">login</a> to write a review.
-                          </Alert>
-                        )}
-                      </Col>
-                    </Row>
-                  </div>
-                </Tab>
-              </Tabs>
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </motion.div>
 
       {/* Related Products */}
       {relatedProducts.length > 0 && (
-        <Row className="mt-5">
-          <Col>
-            <h3 className="mb-4">Related Products</h3>
-            <Row>
-              {relatedProducts.map((item) => (
-                <Col key={item._id} sm={6} md={4} lg={3}>
-                  <Card className="shadow-sm border-0 h-100">
-                    <Card.Img variant="top" src={item.image} />
-                    <Card.Body>
-                      <Card.Title className="fs-6">{item.name}</Card.Title>
-                      <Card.Text className="text-primary fw-bold">
-                        ₹{item.price.toLocaleString()}
-                      </Card.Text>
-                      <Button variant="outline-primary" size="sm" block>
-                        View Details
-                      </Button>
-                    </Card.Body>
-                  </Card>
-                </Col>
-              ))}
-            </Row>
-          </Col>
-        </Row>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="mb-5">
+          <h3 className="fw-bold mb-4">You May Also Like</h3>
+          <div className="row g-4">
+            {relatedProducts.map((item) => (
+              <div key={item._id} className="col-12 col-sm-6 col-lg-3">
+                <ProductCard product={item} />
+              </div>
+            ))}
+          </div>
+        </motion.div>
       )}
-    </Container>
+    </div>
   );
 };
 
