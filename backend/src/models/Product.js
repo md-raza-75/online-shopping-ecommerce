@@ -61,6 +61,11 @@ const productSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  seller: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
   reviews: [reviewSchema],
   rating: {
     type: Number,

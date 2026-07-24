@@ -325,35 +325,69 @@ const AdminOrders = () => {
                 </div>
               )}
 
-              <h6 className="fw-bold mb-3 text-dark d-flex align-items-center gap-2"><FaBox className="text-muted" /> Order Items</h6>
-              <div className="table-responsive rounded-4 border overflow-hidden mb-4">
-                <table className="table table-hover mb-0">
-                  <thead className="bg-light">
-                    <tr>
-                      <th className="py-3 px-4">Product</th>
-                      <th className="py-3 text-end">Price</th>
-                      <th className="py-3 text-center">Qty</th>
-                      <th className="py-3 px-4 text-end">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedOrder.items && selectedOrder.items.map((item, index) => (
-                      <tr key={index}>
-                        <td className="py-3 px-4 fw-bold text-dark">{item.name}</td>
-                        <td className="py-3 text-end text-muted">{formatCurrency(item.price)}</td>
-                        <td className="py-3 text-center fw-bold">{item.quantity}</td>
-                        <td className="py-3 px-4 text-end fw-bold text-primary">{formatCurrency(item.price * item.quantity)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-light border-top">
-                    <tr>
-                      <td colSpan="3" className="text-end py-3 px-4"><strong>Total Amount:</strong></td>
-                      <td className="py-3 px-4 text-end"><strong className="fs-5 gradient-text">{formatCurrency(calculateOrderTotal(selectedOrder))}</strong></td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
+              <h6 className="fw-bold mb-3 text-dark d-flex align-items-center gap-2">
+                <FaBox className="text-muted" /> Order Items (Split Seller-Wise)
+              </h6>
+              
+              {(() => {
+                const groups = {};
+                (selectedOrder.items || []).forEach(item => {
+                  const sName = item.storeName || item.seller?.storeName || item.sellerName || 'ShopEasy Main Store';
+                  if (!groups[sName]) groups[sName] = [];
+                  groups[sName].push(item);
+                });
+
+                return Object.entries(groups).map(([sellerStore, sellerItems], groupIdx) => (
+                  <div key={groupIdx} className="mb-4 rounded-4 border overflow-hidden shadow-sm">
+                    <div className="bg-primary bg-opacity-10 px-4 py-2 border-bottom d-flex align-items-center justify-content-between">
+                      <span className="fw-bold text-primary">
+                        🏬 Seller / Store: <strong>{sellerStore}</strong>
+                      </span>
+                      <span className="badge bg-primary rounded-pill">
+                        {sellerItems.length} {sellerItems.length === 1 ? 'Item' : 'Items'}
+                      </span>
+                    </div>
+                    <div className="table-responsive">
+                      <table className="table table-hover mb-0 align-middle">
+                        <thead className="bg-light">
+                          <tr>
+                            <th className="py-2 px-4">Product</th>
+                            <th className="py-2 text-end">Price</th>
+                            <th className="py-2 text-center">Qty</th>
+                            <th className="py-2 px-4 text-end">Subtotal</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sellerItems.map((item, index) => (
+                            <tr key={index}>
+                              <td className="py-3 px-4">
+                                <div className="d-flex align-items-center gap-3">
+                                  {item.image && (
+                                    <img src={item.image} alt={item.name} className="rounded" style={{ width: 38, height: 38, objectFit: 'cover' }} />
+                                  )}
+                                  <div>
+                                    <strong className="text-dark d-block">{item.name}</strong>
+                                    <small className="text-muted">Vendor: {item.sellerName || sellerStore}</small>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-3 text-end text-muted">{formatCurrency(item.price)}</td>
+                              <td className="py-3 text-center fw-bold">{item.quantity}</td>
+                              <td className="py-3 px-4 text-end fw-bold text-primary">{formatCurrency(item.price * item.quantity)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="bg-light">
+                          <tr>
+                            <td colSpan="3" className="text-end py-2 px-4"><small className="fw-bold text-muted">Seller Subtotal:</small></td>
+                            <td className="py-2 px-4 text-end"><strong className="text-success">{formatCurrency(sellerItems.reduce((s, i) => s + (i.price * i.quantity), 0))}</strong></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                ));
+              })()}
             </div>
 
             <div className="p-4 border-top bg-light d-flex justify-content-end gap-3">

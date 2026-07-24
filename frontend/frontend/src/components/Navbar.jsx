@@ -150,6 +150,16 @@ const Navbar = () => {
                     <Link to="/profile" className="dropdown-item"><FaUser /> My Profile</Link>
                     <Link to="/orders" className="dropdown-item"><FaBox /> My Orders</Link>
                     
+                    {userInfo.role === 'seller' && (
+                      <>
+                        <div className="dropdown-divider"></div>
+                        <div className="dropdown-header premium-text">Seller Portal</div>
+                        <Link to="/seller" className="dropdown-item"><FaStore /> Seller Dashboard</Link>
+                        <Link to="/seller/products" className="dropdown-item"><FaBox /> My Products</Link>
+                        <Link to="/seller/orders" className="dropdown-item"><FaShoppingBag /> Vendor Orders</Link>
+                      </>
+                    )}
+
                     {userInfo.role === 'admin' && (
                       <>
                         <div className="dropdown-divider"></div>
@@ -159,6 +169,7 @@ const Navbar = () => {
                         <Link to="/admin/orders" className="dropdown-item"><FaBox /> Orders</Link>
                         <Link to="/admin/coupons" className="dropdown-item"><FaTag /> Coupons</Link>
                         <Link to="/admin/users" className="dropdown-item"><FaUsers /> Users</Link>
+                        <Link to="/admin/sellers" className="dropdown-item"><FaStore /> Seller Approvals</Link>
                       </>
                     )}
                     <div className="dropdown-divider"></div>
@@ -208,6 +219,16 @@ const Navbar = () => {
                 <Link to="/profile" className="mobile-link" onClick={() => setIsMobileMenuOpen(false)}>My Profile</Link>
                 <Link to="/orders" className="mobile-link" onClick={() => setIsMobileMenuOpen(false)}>My Orders</Link>
                 
+                {userInfo.role === 'seller' && (
+                  <>
+                    <div className="mobile-divider"></div>
+                    <div className="mobile-header">Seller</div>
+                    <Link to="/seller" className="mobile-link" onClick={() => setIsMobileMenuOpen(false)}>Seller Dashboard</Link>
+                    <Link to="/seller/products" className="mobile-link" onClick={() => setIsMobileMenuOpen(false)}>My Products</Link>
+                    <Link to="/seller/orders" className="mobile-link" onClick={() => setIsMobileMenuOpen(false)}>Vendor Orders</Link>
+                  </>
+                )}
+
                 {userInfo.role === 'admin' && (
                   <>
                     <div className="mobile-divider"></div>
@@ -216,6 +237,8 @@ const Navbar = () => {
                     <Link to="/admin/products" className="mobile-link" onClick={() => setIsMobileMenuOpen(false)}>Products</Link>
                     <Link to="/admin/orders" className="mobile-link" onClick={() => setIsMobileMenuOpen(false)}>Orders</Link>
                     <Link to="/admin/coupons" className="mobile-link" onClick={() => setIsMobileMenuOpen(false)}>Coupons</Link>
+                    <Link to="/admin/users" className="mobile-link" onClick={() => setIsMobileMenuOpen(false)}>Users</Link>
+                    <Link to="/admin/sellers" className="mobile-link" onClick={() => setIsMobileMenuOpen(false)}>Seller Approvals</Link>
                   </>
                 )}
                 <div className="mobile-divider"></div>

@@ -10,61 +10,37 @@ const CheckoutSuccess = () => {
   const { orderId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  
+
   const [order, setOrder] = useState(location.state?.order || null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [hasAutoDownloaded, setHasAutoDownloaded] = useState(false);
-  
+
   const hasFetched = useRef(false);
   const hasAutoDownloadTriggered = useRef(false);
 
   useEffect(() => {
     if (hasFetched.current) return;
-    
-    const initializeOrder = async () => {
-      if (orderId) {
-        await fetchOrderDetails();
-      } else if (order) {
-        setLoading(false);
-      } else {
-        setLoading(false);
-        toast.error('No order found');
-        navigate('/');
-      }
-    };
+    hasFetched.current = true;
 
-    initializeOrder();
-    
-    const autoDownloadForCOD = () => {
-      if (!hasAutoDownloadTriggered.current && order?.paymentMethod === 'COD' && !hasAutoDownloaded) {
-        hasAutoDownloadTriggered.current = true;
-        setTimeout(() => {
-          handleDownloadInvoice(true);
-        }, 2000);
-      }
-    };
-
-    if (order && order.paymentMethod === 'COD') {
-      autoDownloadForCOD();
+    if (orderId) {
+      fetchOrderDetails();
+    } else if (location.state?.order) {
+      setLoading(false);
+    } else {
+      setLoading(false);
+      toast.error('No order found');
+      navigate('/');
     }
-
-    return () => {
-      hasFetched.current = true;
-    };
-  }, [orderId, order, hasAutoDownloaded]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchOrderDetails = async () => {
     try {
       setLoading(true);
       const response = await getOrderById(orderId);
-      setOrder(response.data);
-      if (response.data.paymentMethod === 'COD' && !hasAutoDownloadTriggered.current) {
-        hasAutoDownloadTriggered.current = true;
-        setTimeout(() => {
-          handleDownloadInvoice(true);
-        }, 2000);
-      }
+      const orderData = response.data ?? response;
+      setOrder(orderData);
     } catch (error) {
       toast.error('Failed to fetch order details');
       navigate('/orders');
@@ -87,7 +63,7 @@ const CheckoutSuccess = () => {
       const blob = response.data;
       const invoiceNumber = order?.invoice?.invoiceNumber || `INV-${orderId?.slice(-6) || 'ORDER'}`;
       const fileName = `ShopEasy-Invoice-${invoiceNumber}.pdf`;
-      
+
       const downloadBlob = (blobData, filename) => {
         const url = window.URL.createObjectURL(blobData);
         const link = document.createElement('a');
@@ -101,9 +77,9 @@ const CheckoutSuccess = () => {
           window.URL.revokeObjectURL(url);
         }, 100);
       };
-      
+
       downloadBlob(blob, fileName);
-      
+
       if (!isAuto) {
         toast.success('✅ Invoice downloaded successfully!');
       } else {
@@ -169,7 +145,7 @@ const CheckoutSuccess = () => {
     <div className="container py-5">
       <div className="row justify-content-center">
         <div className="col-lg-8">
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             className="glass-card border-0 overflow-hidden"
@@ -196,10 +172,10 @@ const CheckoutSuccess = () => {
                 <div>
                   <h6 className="fw-bold mb-1">Your order has been placed successfully!</h6>
                   <p className="mb-0 small">
-                    {order.paymentMethod === 'COD' 
+                    {order.paymentMethod === 'COD'
                       ? '💵 Cash on Delivery selected. Please keep cash ready for delivery.'
                       : '💳 Payment processed successfully.'}
-                    <br/>Order confirmation has been sent to your email.
+                    <br />Order confirmation has been sent to your email.
                   </p>
                 </div>
               </div>
@@ -263,7 +239,7 @@ const CheckoutSuccess = () => {
                           <tr key={index}>
                             <td className="py-3 px-4">
                               <div className="d-flex align-items-center gap-3">
-                                {item.image && <img src={item.image} alt={item.name} className="rounded" style={{ width: '40px', height: '40px', objectFit: 'cover' }}/>}
+                                {item.image && <img src={item.image} alt={item.name} className="rounded" style={{ width: '40px', height: '40px', objectFit: 'cover' }} />}
                                 <span className="fw-bold text-dark">{item.name || 'Product'}</span>
                               </div>
                             </td>
@@ -322,7 +298,7 @@ const CheckoutSuccess = () => {
                     {order.paymentMethod === 'COD' && hasAutoDownloaded && (
                       <p className="small text-muted mb-3">Invoice auto-downloaded to your device.</p>
                     )}
-                    <button 
+                    <button
                       className="btn-premium w-100 py-2 d-flex align-items-center justify-content-center gap-2"
                       onClick={() => handleDownloadInvoice(false)}
                       disabled={downloading}

@@ -10,8 +10,7 @@ const {
   createProductReview,
   deleteProductReview
 } = require('../controllers/productController');
-const { protect } = require('../middleware/authMiddleware');
-const { admin } = require('../middleware/adminMiddleware');
+const { protect, admin, approvedSeller } = require('../middleware/authMiddleware');
 
 // Public routes
 router.get('/', getProducts);
@@ -21,10 +20,14 @@ router.get('/:id', getProductById);
 router.post('/:id/reviews', protect, createProductReview);
 router.delete('/:id/reviews/:reviewId', protect, deleteProductReview);
 
-// Admin routes (protected + admin)
-router.get('/admin/all', protect, admin, getAdminProducts);  // ✅ Ye route correct hai
-router.post('/', protect, admin, createProduct);
-router.put('/:id', protect, admin, updateProduct);
-router.delete('/:id', protect, admin, deleteProduct);
+// Admin-only route (full product list with inactive)
+router.get('/admin/all', protect, admin, getAdminProducts);
+
+// Create product — Admin OR approved Seller can create
+router.post('/', protect, approvedSeller, createProduct);
+
+// Update/Delete product — Admin OR approved Seller (controller enforces ownership for sellers)
+router.put('/:id', protect, approvedSeller, updateProduct);
+router.delete('/:id', protect, approvedSeller, deleteProduct);
 
 module.exports = router;

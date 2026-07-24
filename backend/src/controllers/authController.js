@@ -13,7 +13,7 @@ const generateToken = (id) => {
 // @access  Public
 const registerUser = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, role, storeName, phone } = req.body;
 
     // Validation
     if (!name || !email || !password) {
@@ -32,11 +32,18 @@ const registerUser = async (req, res) => {
       });
     }
 
+    const assignedRole = (role === 'seller') ? 'seller' : 'user';
+    const sellerStatus = (assignedRole === 'seller') ? 'pending' : 'approved';
+
     // Create user
     const user = await User.create({
       name,
       email: email.toLowerCase(),
-      password
+      password,
+      phone: phone || null,
+      role: assignedRole,
+      sellerStatus: sellerStatus,
+      storeName: storeName || (assignedRole === 'seller' ? `${name}'s Store` : null)
     });
 
     if (user) {
@@ -46,10 +53,15 @@ const registerUser = async (req, res) => {
           _id: user._id,
           name: user.name,
           email: user.email,
+          phone: user.phone,
           role: user.role,
+          sellerStatus: user.sellerStatus,
+          storeName: user.storeName,
           token: generateToken(user._id)
         },
-        message: 'User registered successfully'
+        message: assignedRole === 'seller' 
+          ? 'Seller registered successfully. Your account is pending Super Admin approval.'
+          : 'User registered successfully'
       });
     } else {
       return res.status(400).json({
@@ -86,13 +98,28 @@ const loginUser = async (req, res) => {
 
     // Check user and password
     if (user && (await user.matchPassword(password))) {
+      // Block check
+      if (user.isBlocked) {
+        return res.status(403).json({
+          success: false,
+          message: 'Your account has been blocked. Please contact support.'
+        });
+      }
+
+      // Record last login time
+      user.lastLogin = new Date();
+      await user.save({ validateBeforeSave: false });
+
       return res.json({
         success: true,
         data: {
           _id: user._id,
           name: user.name,
           email: user.email,
+          phone: user.phone,
           role: user.role,
+          sellerStatus: user.sellerStatus,
+          storeName: user.storeName,
           token: generateToken(user._id)
         },
         message: 'Login successful'

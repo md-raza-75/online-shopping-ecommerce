@@ -154,9 +154,24 @@ const createOrder = async (req, res) => {
         });
       }
       
+      // Fetch seller info if product has seller
+      let sellerId = product.seller || null;
+      let sellerName = 'Main Store';
+      let storeName = 'ShopEasy Main Store';
+      if (sellerId) {
+        const sellerUser = await User.findById(sellerId).select('name storeName');
+        if (sellerUser) {
+          sellerName = sellerUser.name;
+          storeName = sellerUser.storeName || `${sellerUser.name}'s Store`;
+        }
+      }
+
       // Add to order items
       orderItems.push({
         product: product._id,
+        seller: sellerId,
+        sellerName,
+        storeName,
         name: product.name,
         quantity: item.quantity,
         price: product.price,
@@ -488,7 +503,8 @@ const getOrders = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)
-      .populate('user', 'name email')
+      .populate('user', 'name email phone')
+      .populate('items.seller', 'name email storeName')
       .lean();
     
     const total = await Order.countDocuments(query);
@@ -659,7 +675,7 @@ const downloadInvoice = async (req, res) => {
       });
     }
     
-    // ✅ CHECK PERMISSIONS
+    // ✅ CHECK PERMISSIONS & DELIVERED STATUS
     const isAdmin = req.user && req.user.role === 'admin';
     const isOrderOwner = order.user.toString() === req.user._id.toString();
     
@@ -670,16 +686,11 @@ const downloadInvoice = async (req, res) => {
       });
     }
     
-    // ✅ CHECK PAYMENT STATUS - UPDATED: Allow download for delivered COD orders
-    const canDownloadWithoutPayment = isAdmin || 
-                                      order.paymentMethod === 'COD' || 
-                                      order.orderStatus === 'delivered';
-    const paymentCompleted = order.paymentStatus === 'completed';
-    
-    if (!canDownloadWithoutPayment && !paymentCompleted) {
+    // ✅ PDF download is only available once admin marks the order as 'delivered'
+    if (!isAdmin && order.orderStatus !== 'delivered') {
       return res.status(400).json({
         success: false,
-        message: 'Invoice will be available after payment is completed'
+        message: 'Invoice PDF download is available only after your order has been delivered.'
       });
     }
     
@@ -811,11 +822,8 @@ const getInvoiceStatus = async (req, res) => {
       });
     }
     
-    // ✅ UPDATED: Check if can download - allow for delivered COD orders
-    const canDownload = isAdmin || 
-                       order.paymentStatus === 'completed' || 
-                       order.paymentMethod === 'COD' ||
-                       order.orderStatus === 'delivered';
+    // ✅ Check if can download - enabled only when order is delivered (or for admins)
+    const canDownload = isAdmin || order.orderStatus === 'delivered';
     
     res.json({
       success: true,
@@ -946,11 +954,12 @@ const downloadInvoiceQuick = async (req, res) => {
       });
     }
     
-    // Quick permission check (for COD orders only)
-    if (order.paymentMethod !== 'COD') {
+    // Quick permission and delivered status check
+    const isAdmin = req.user && req.user.role === 'admin';
+    if (!isAdmin && order.orderStatus !== 'delivered') {
       return res.status(400).json({
         success: false,
-        message: 'Quick download only available for COD orders'
+        message: 'Invoice PDF download is available only after your order has been delivered.'
       });
     }
     
@@ -996,6 +1005,78 @@ const downloadInvoiceQuick = async (req, res) => {
   }
 };
 
+// @desc    Get orders containing seller items
+// @route   GET /api/seller/orders
+// @access  Private/Seller
+const getSellerOrders = async (req, res) => {
+  try {
+    const sellerId = req.user._id.toString();
+    const orders = await Order.find({ 'items.seller': req.user._id })
+      .sort({ createdAt: -1 })
+      .populate('user', 'name email phone')
+      .lean();
+
+    // Filter items to only include items belonging to this seller
+    const sellerOrders = orders.map(order => {
+      const sellerItems = (order.items || []).filter(item => 
+        item.seller && item.seller.toString() === sellerId
+      );
+      const sellerSubtotal = sellerItems.reduce((sum, item) => sum + ((item.price || 0) * (item.quantity || 1)), 0);
+
+      return {
+        ...order,
+        items: sellerItems,
+        sellerSubtotal
+      };
+    });
+
+    res.json({
+      success: true,
+      count: sellerOrders.length,
+      data: sellerOrders
+    });
+  } catch (error) {
+    console.error('Get seller orders error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Server error' });
+  }
+};
+
+// @desc    Get stats for seller dashboard
+// @route   GET /api/seller/stats
+// @access  Private/Seller
+const getSellerStats = async (req, res) => {
+  try {
+    const sellerId = req.user._id.toString();
+    const productsCount = await Product.countDocuments({ seller: req.user._id, isActive: true });
+    
+    const orders = await Order.find({ 'items.seller': req.user._id }).lean();
+    let totalRevenue = 0;
+    let totalItemsSold = 0;
+
+    orders.forEach(order => {
+      (order.items || []).forEach(item => {
+        if (item.seller && item.seller.toString() === sellerId) {
+          totalRevenue += (item.price || 0) * (item.quantity || 1);
+          totalItemsSold += (item.quantity || 1);
+        }
+      });
+    });
+
+    res.json({
+      success: true,
+      data: {
+        productsCount,
+        ordersCount: orders.length,
+        totalRevenue,
+        totalItemsSold
+      }
+    });
+  } catch (error) {
+    console.error('Get seller stats error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Server error' });
+  }
+};
+
 // ✅ Module exports
 module.exports = {
   createOrder,
@@ -1003,7 +1084,9 @@ module.exports = {
   verifyPayment,
   getOrderById,
   getMyOrders,
-  getOrders,  
+  getOrders,
+  getSellerOrders,
+  getSellerStats,
   updateOrderToPaid,
   updateOrderStatus,
   downloadInvoice,

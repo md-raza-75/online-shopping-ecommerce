@@ -74,11 +74,10 @@ const Orders = () => {
   };
 
   const canDownloadInvoice = (order) => {
-    if (order.paymentStatus === 'completed') return true;
-    if (order.paymentMethod === 'COD' && order.orderStatus === 'delivered') return true;
+    if (!order) return false;
     const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
     if (userInfo.role === 'admin') return true;
-    return false;
+    return order.orderStatus === 'delivered';
   };
 
   const handleDownloadInvoice = async (orderId, e) => {
@@ -237,7 +236,7 @@ const Orders = () => {
                             <FaEye size={16} />
                           </button>
                           
-                          {canDownloadInvoice(order) && (
+                          {canDownloadInvoice(order) ? (
                             <button
                               className="btn btn-light rounded-circle shadow-sm d-flex align-items-center justify-content-center text-success"
                               style={{ width: '40px', height: '40px' }}
@@ -251,6 +250,14 @@ const Orders = () => {
                                 <FaDownload size={16} />
                               )}
                             </button>
+                          ) : (
+                            <span 
+                              className="d-inline-flex align-items-center gap-1 text-muted px-2 py-1 small rounded-3 bg-light border opacity-75"
+                              title="Invoice PDF available once order is delivered"
+                            >
+                              <FaFilePdf size={12} className="text-secondary" />
+                              <small style={{ fontSize: '0.75rem' }}>Available on Delivery</small>
+                            </span>
                           )}
                         </div>
                       </td>
@@ -447,7 +454,7 @@ const Orders = () => {
               <button className="btn btn-light border px-4 fw-bold text-muted" onClick={() => setShowDetails(false)}>
                 Close
               </button>
-              {canDownloadInvoice(selectedOrder) && (
+              {canDownloadInvoice(selectedOrder) ? (
                 <button 
                   className="btn-premium px-4 py-2"
                   onClick={(e) => handleDownloadInvoice(selectedOrder._id, e)}
@@ -458,6 +465,14 @@ const Orders = () => {
                   ) : (
                     <><FaFilePdf className="me-2" /> Download Invoice</>
                   )}
+                </button>
+              ) : (
+                <button 
+                  className="btn btn-light border px-4 py-2 text-muted fw-semibold" 
+                  disabled
+                  title="Invoice PDF will be unlocked once order is delivered by admin"
+                >
+                  <FaFilePdf className="me-2 text-secondary" /> Available Once Delivered
                 </button>
               )}
             </div>

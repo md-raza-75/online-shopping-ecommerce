@@ -38,13 +38,16 @@ const {
   createProduct, 
   updateProduct, 
   deleteProduct,
-  getAdminProducts 
+  getAdminProducts,
+  getSellerProducts 
 } = require('./src/controllers/productController');
 const { 
   createOrder, 
   getMyOrders, 
   getOrderById, 
   getOrders,
+  getSellerOrders,
+  getSellerStats,
   updateOrderToPaid, 
   updateOrderStatus,
   downloadInvoice, 
@@ -55,7 +58,17 @@ const {
 // ✅ Import couponController
 const { validateCoupon } = require('./src/controllers/couponController');
 
-const { protect, admin } = require('./src/middleware/authMiddleware');
+// ✅ Import userController (admin)
+const { 
+  getAdminUsers, 
+  getAdminUserById, 
+  blockUnblockUser, 
+  deleteAdminUser,
+  getAdminSellers,
+  updateSellerStatus
+} = require('./src/controllers/userController');
+
+const { protect, admin, seller, approvedSeller } = require('./src/middleware/authMiddleware');
 
 // Import routes
 const productRoutes = require('./src/routes/productRoutes');
@@ -70,6 +83,19 @@ app.post('/api/auth/register', registerUser);
 app.post('/api/auth/login', loginUser);
 app.get('/api/auth/profile', protect, getUserProfile);
 app.get('/api/auth/users', protect, admin, getUsers);
+
+// Admin User & Seller Management Routes
+app.get('/api/admin/users', protect, admin, getAdminUsers);
+app.get('/api/admin/users/:id', protect, admin, getAdminUserById);
+app.put('/api/admin/users/:id/block', protect, admin, blockUnblockUser);
+app.delete('/api/admin/users/:id', protect, admin, deleteAdminUser);
+app.get('/api/admin/sellers', protect, admin, getAdminSellers);
+app.put('/api/admin/sellers/:id/status', protect, admin, updateSellerStatus);
+
+// Seller Portal Routes
+app.get('/api/seller/products', protect, seller, getSellerProducts);
+app.get('/api/seller/orders', protect, seller, getSellerOrders);
+app.get('/api/seller/stats', protect, seller, getSellerStats);
 
 // Order Routes
 app.post('/api/orders', protect, createOrder);

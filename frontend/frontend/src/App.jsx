@@ -35,12 +35,20 @@ import EditProduct from './pages/Admin/EditProduct';
 import ProductList from './pages/Admin/ProductList';
 import AdminOrders from './pages/Admin/AdminOrders';
 import AdminCoupon from './pages/Admin/AdminCoupon';
+import AdminUsers from './pages/Admin/AdminUsers';
+import AdminSellers from './pages/Admin/AdminSellers';
+
+// Seller Pages
+import SellerDashboard from './pages/Seller/SellerDashboard';
+import SellerProducts from './pages/Seller/SellerProducts';
+import SellerOrders from './pages/Seller/SellerOrders';
 
 // Protected Route Component
-const ProtectedRoute = ({ children, adminOnly = false }) => {
+const ProtectedRoute = ({ children, adminOnly = false, sellerOnly = false }) => {
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isSeller, setIsSeller] = useState(false);
 
   useEffect(() => {
     const checkAuth = () => {
@@ -49,9 +57,11 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
       if (userInfo && userInfo.token) {
         setIsAuthenticated(true);
         setIsAdmin(userInfo.role === 'admin');
+        setIsSeller(userInfo.role === 'seller' || userInfo.role === 'admin');
       } else {
         setIsAuthenticated(false);
         setIsAdmin(false);
+        setIsSeller(false);
       }
       setLoading(false);
     };
@@ -68,6 +78,10 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
   }
 
   if (adminOnly && !isAdmin) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (sellerOnly && !isSeller) {
     return <Navigate to="/" replace />;
   }
 
@@ -177,6 +191,33 @@ function App() {
                   <Route path="/admin/edit-product/:id" element={
                     <ProtectedRoute adminOnly>
                       <EditProduct />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/admin/users" element={
+                    <ProtectedRoute adminOnly>
+                      <AdminUsers />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/admin/sellers" element={
+                    <ProtectedRoute adminOnly>
+                      <AdminSellers />
+                    </ProtectedRoute>
+                  } />
+
+                  {/* Protected Routes - Seller */}
+                  <Route path="/seller" element={
+                    <ProtectedRoute sellerOnly>
+                      <SellerDashboard />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/seller/products" element={
+                    <ProtectedRoute sellerOnly>
+                      <SellerProducts />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/seller/orders" element={
+                    <ProtectedRoute sellerOnly>
+                      <SellerOrders />
                     </ProtectedRoute>
                   } />
                   

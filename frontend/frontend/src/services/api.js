@@ -96,8 +96,8 @@ export const deleteCoupon = (couponId) => {
 export const login = (email, password) =>
   API.post('/auth/login', { email, password });
 
-export const register = (name, email, password) =>
-  API.post('/auth/register', { name, email, password });
+export const register = (name, email, password, extraData = {}) =>
+  API.post('/auth/register', { name, email, password, ...extraData });
 
 export const getProfile = () =>
   API.get('/auth/profile');
@@ -156,6 +156,35 @@ export const updateOrderToPaid = (id, paymentId) =>
 
 export const verifyPayment = (orderId, paymentData) =>
   API.post(`/orders/${orderId}/verify-payment`, paymentData);
+
+// ========== ADMIN USER APIs ==========
+export const getAdminUsers = (params = {}) =>
+  API.get('/admin/users', { params });
+
+export const getAdminUserById = (id) =>
+  API.get(`/admin/users/${id}`);
+
+export const blockUnblockUser = (id) =>
+  API.put(`/admin/users/${id}/block`);
+
+export const deleteAdminUser = (id) =>
+  API.delete(`/admin/users/${id}`);
+
+// ========== SELLER & ADMIN SELLER APIs ==========
+export const getAdminSellers = (params = {}) =>
+  API.get('/admin/sellers', { params });
+
+export const updateSellerStatus = (id, sellerStatus) =>
+  API.put(`/admin/sellers/${id}/status`, { sellerStatus });
+
+export const getSellerProducts = () =>
+  API.get('/seller/products');
+
+export const getSellerOrders = () =>
+  API.get('/seller/orders');
+
+export const getSellerStats = () =>
+  API.get('/seller/stats');
 
 // ========== INVOICE APIs ==========
 export const downloadInvoice = async (orderId) => {

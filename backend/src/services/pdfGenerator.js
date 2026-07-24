@@ -14,7 +14,6 @@ class PDFGenerator {
       if (!fs.existsSync(this.downloadsDir)) {
         fs.mkdirSync(this.downloadsDir, { recursive: true });
       }
-      
       if (!fs.existsSync(this.invoicesDir)) {
         fs.mkdirSync(this.invoicesDir, { recursive: true });
       }
@@ -26,334 +25,429 @@ class PDFGenerator {
   generateInvoice(order, user) {
     return new Promise((resolve, reject) => {
       try {
-        const invoiceNumber = `INV${new Date().getFullYear()}${String(order._id).slice(-8)}`;
+        const invoiceNumber = order.invoice?.invoiceNumber || 
+          `INV${new Date(order.createdAt || Date.now()).getFullYear()}${String(order._id).slice(-8).toUpperCase()}`;
         const fileName = `${invoiceNumber}.pdf`;
         const filePath = path.join(this.invoicesDir, fileName);
-        
-        const doc = new PDFDocument({ 
+
+        const doc = new PDFDocument({
           size: 'A4',
-          margin: 40,
+          margins: { top: 40, bottom: 20, left: 40, right: 40 },
           layout: 'portrait',
           bufferPages: true
         });
-        
+
         const stream = fs.createWriteStream(filePath);
         doc.pipe(stream);
-        
-        // ============ HEADER ============
-        // Top: Company and Invoice
+
+        const margin = 40;
+        const pageWidth = 595.28;
+        const pageHeight = 841.89;
+        const contentWidth = pageWidth - (margin * 2); // 515.28
+
+        // ============ HEADER SECTION ============
+        // Top Indigo Branding Bar
+        doc.rect(0, 0, pageWidth, 12).fill('#4F46E5');
+
+        // Company Logo / Title
         doc.fillColor('#4F46E5')
            .fontSize(24)
            .font('Helvetica-Bold')
-           .text('ShopEasy', 40, 40);
-        
-        doc.fontSize(10)
+           .text('ShopEasy', margin, 30);
+
+        doc.fontSize(9)
            .font('Helvetica')
-           .fillColor('#6B7280')
-           .text('Modern E-commerce Platform', 40, 70);
-        
-        // Invoice Title
-        doc.fillColor('#111827')
+           .fillColor('#64748B')
+           .text('Modern E-commerce Platform', margin, 58);
+
+        // Invoice Title & Primary Meta (Right Aligned)
+        doc.fillColor('#0F172A')
            .fontSize(20)
            .font('Helvetica-Bold')
-           .text('TAX INVOICE', 400, 40, { width: 160, align: 'right' });
-        
-        doc.fontSize(10)
-           .fillColor('#4B5563')
-           .text(`Invoice #: ${invoiceNumber}`, 400, 70, { width: 160, align: 'right' })
-           .text(`Date: ${this.formatDate(order.createdAt)}`, 400, 85, { width: 160, align: 'right' });
-        
-        // Separator
-        doc.strokeColor('#D1D5DB')
+           .text('TAX INVOICE', margin + 300, 30, { width: 215, align: 'right' });
+
+        doc.fontSize(9)
+           .font('Helvetica-Bold')
+           .fillColor('#4F46E5')
+           .text(`Invoice #: ${invoiceNumber}`, margin + 300, 56, { width: 215, align: 'right' });
+
+        doc.font('Helvetica')
+           .fillColor('#475569')
+           .text(`Date: ${this.formatDate(order.createdAt)}`, margin + 300, 70, { width: 215, align: 'right' });
+
+        // Divider Line
+        doc.strokeColor('#E2E8F0')
            .lineWidth(1)
-           .moveTo(40, 110)
-           .lineTo(555, 110)
+           .moveTo(margin, 90)
+           .lineTo(margin + contentWidth, 90)
            .stroke();
-        
-        // ============ COMPANY & CUSTOMER INFO ============
-        // Company (Left)
-        doc.fillColor('#111827')
-           .fontSize(11)
+
+        // ============ ADDRESS & CUSTOMER INFO ============
+        let currentY = 100;
+
+        // Seller Info (Left Column)
+        doc.fillColor('#0F172A')
+           .fontSize(10)
            .font('Helvetica-Bold')
-           .text('Sold By:', 40, 120);
-        
-        doc.fontSize(10)
-           .fillColor('#374151')
-           .text('ShopEasy E-commerce Pvt. Ltd.', 40, 135)
-           .text('123 Digital Mall, Mumbai', 40, 150)
-           .text('Maharashtra 400001', 40, 165)
-           .text('GSTIN: 27AABCS1429Q1Z', 40, 180)
-           .text('Phone: +91 22 1234 5678', 40, 195);
-        
-        // Customer (Right)
-        doc.fillColor('#111827')
-           .fontSize(11)
+           .text('Sold By:', margin, currentY);
+
+        doc.fontSize(9)
            .font('Helvetica-Bold')
-           .text('Bill To:', 300, 120);
-        
+           .fillColor('#1E293B')
+           .text('ShopEasy E-commerce Pvt. Ltd.', margin, currentY + 14);
+
+        doc.font('Helvetica')
+           .fillColor('#475569')
+           .text('123 Digital Mall, Tech Park', margin, currentY + 27)
+           .text('Mumbai, Maharashtra - 400001', margin, currentY + 40)
+           .text('GSTIN: 27AABCS1429Q1Z', margin, currentY + 53)
+           .text('Email: support@shopeasy.com | Phone: +91 22 1234 5678', margin, currentY + 66);
+
+        // Customer & Shipping Info (Right Column)
+        const rightColX = margin + 270;
+
+        // Bill To
         const customerName = user?.name || order.shippingAddress?.name || 'Customer';
         const customerEmail = user?.email || 'Not provided';
         const customerPhone = user?.phone || order.shippingAddress?.phone || 'Not provided';
-        
-        doc.fontSize(10)
-           .fillColor('#374151')
-           .text(customerName, 300, 135)
-           .text(`Email: ${customerEmail}`, 300, 150)
-           .text(`Phone: ${customerPhone}`, 300, 165);
-        
-        // ✅ FIXED: Ship To - Now shows customer name and address
-        if (order.shippingAddress) {
-          doc.text('Ship To:', 300, 185, { bold: true });
-          
-          // First line: Customer name (order wala customer)
-          doc.text(customerName, 300, 200);
-          
-          // Second line: Address
-          doc.text(order.shippingAddress.address, 300, 215, { width: 240 });
-          
-          // Third line: City, State, Postal
-          const cityState = `${order.shippingAddress.city}, ${order.shippingAddress.state} - ${order.shippingAddress.postalCode}`;
-          doc.text(cityState, 300, 230, { width: 240 });
-          
-          // Fourth line: Country and phone
-          let shipInfoLine = order.shippingAddress.country || 'India';
-          if (order.shippingAddress.phone) {
-            shipInfoLine += ` | Phone: ${order.shippingAddress.phone}`;
-          }
-          doc.text(shipInfoLine, 300, 245, { width: 240 });
-        } else {
-          // If no shipping address, show customer info in Ship To
-          doc.text('Ship To:', 300, 185, { bold: true });
-          doc.text(customerName, 300, 200);
-          doc.text(`Phone: ${customerPhone}`, 300, 215);
-        }
-        
-        // ============ ORDER SUMMARY ============
-        const boxY = Math.max(doc.y, 270);
-        const boxHeight = 30;
-        
-        // Order info box
-        doc.fillColor('#F9FAFB')
-           .rect(40, boxY, 515, boxHeight)
-           .fill()
-           .strokeColor('#E5E7EB')
-           .rect(40, boxY, 515, boxHeight)
-           .stroke();
-        
-        const orderInfo = [
-          { label: 'Order ID:', value: `ORD${String(order._id).slice(-8)}` },
-          { label: 'Order Date:', value: this.formatDate(order.createdAt) },
-          { label: 'Payment:', value: order.paymentMethod },
-          { label: 'Status:', value: order.orderStatus }
-        ];
-        
-        const colWidth = 515 / 4;
-        orderInfo.forEach((info, index) => {
-          const x = 45 + (index * colWidth);
-          doc.fontSize(9)
-             .fillColor('#4B5563')
-             .font('Helvetica-Bold')
-             .text(info.label, x, boxY + 8, { width: colWidth - 10 });
-          
-          doc.fontSize(9)
-             .fillColor('#1F2937')
-             .font('Helvetica')
-             .text(info.value, x, boxY + 22, { width: colWidth - 10 });
-        });
-        
-        // ============ PRODUCT TABLE ============
-        const tableStartY = boxY + boxHeight + 20;
-        const colWidths = [250, 60, 80, 125];
-        const colX = [40, 290, 350, 430];
-        
-        // Table Header
-        doc.fillColor('#4F46E5')
-           .rect(40, tableStartY, 515, 25)
-           .fill();
-        
-        doc.fillColor('#FFFFFF')
+
+        doc.fillColor('#0F172A')
            .fontSize(10)
            .font('Helvetica-Bold')
-           .text('Description', colX[0] + 5, tableStartY + 8, { width: colWidths[0] - 10 })
-           .text('Qty', colX[1], tableStartY + 8, { width: colWidths[1], align: 'center' })
-           .text('Unit Price', colX[2], tableStartY + 8, { width: colWidths[2], align: 'center' })
-           .text('Total', colX[3], tableStartY + 8, { width: colWidths[3] - 5, align: 'right' });
-        
-        // Table Rows
-        let currentY = tableStartY + 25;
+           .text('Bill To:', rightColX, currentY);
+
+        doc.fontSize(9)
+           .font('Helvetica-Bold')
+           .fillColor('#1E293B')
+           .text(customerName, rightColX, currentY + 14);
+
+        doc.font('Helvetica')
+           .fillColor('#475569')
+           .text(`Email: ${customerEmail}`, rightColX, currentY + 27)
+           .text(`Phone: ${customerPhone}`, rightColX, currentY + 40);
+
+        // Ship To
+        const shipY = currentY + 58;
+        doc.fillColor('#0F172A')
+           .fontSize(10)
+           .font('Helvetica-Bold')
+           .text('Ship To:', rightColX, shipY);
+
+        const shippingAddr = order.shippingAddress || {};
+        const shipName = shippingAddr.name || customerName;
+        const streetAddr = shippingAddr.address || 'Address not provided';
+        const cityStateZip = [
+          shippingAddr.city,
+          shippingAddr.state,
+          shippingAddr.postalCode || shippingAddr.pincode
+        ].filter(Boolean).join(', ');
+        const countryPhone = [
+          shippingAddr.country || 'India',
+          shippingAddr.phone ? `Phone: ${shippingAddr.phone}` : null
+        ].filter(Boolean).join(' | ');
+
+        doc.fontSize(9)
+           .font('Helvetica-Bold')
+           .fillColor('#1E293B')
+           .text(shipName, rightColX, shipY + 14);
+
+        doc.font('Helvetica')
+           .fillColor('#475569')
+           .text(streetAddr, rightColX, shipY + 27, { width: 200 })
+           .text(cityStateZip, rightColX, shipY + 40, { width: 200 })
+           .text(countryPhone, rightColX, shipY + 53, { width: 200 });
+
+        currentY = Math.max(currentY + 80, shipY + 70);
+
+        // ============ ORDER DETAILS SUMMARY BANNER ============
+        doc.fillColor('#F8FAFC')
+           .rect(margin, currentY, contentWidth, 34)
+           .fill()
+           .strokeColor('#CBD5E1')
+           .rect(margin, currentY, contentWidth, 34)
+           .stroke();
+
+        const orderIdStr = `ORD${String(order._id).slice(-8).toUpperCase()}`;
+        const orderDateStr = this.formatDate(order.createdAt);
+        const payMethodStr = order.paymentMethod || 'COD';
+        const orderStatusStr = (order.orderStatus || 'pending').toUpperCase();
+
+        const bannerCols = [
+          { label: 'ORDER ID', value: orderIdStr },
+          { label: 'ORDER DATE', value: orderDateStr },
+          { label: 'PAYMENT METHOD', value: payMethodStr },
+          { label: 'ORDER STATUS', value: orderStatusStr }
+        ];
+
+        const bannerColWidth = contentWidth / 4;
+        bannerCols.forEach((col, i) => {
+          const colX = margin + 10 + (i * bannerColWidth);
+          doc.fontSize(7)
+             .font('Helvetica-Bold')
+             .fillColor('#64748B')
+             .text(col.label, colX, currentY + 6);
+
+          doc.fontSize(9)
+             .font('Helvetica-Bold')
+             .fillColor('#0F172A')
+             .text(col.value, colX, currentY + 18);
+        });
+
+        currentY += 46;
+
+        // Helper to draw Product Table Header
+        const drawTableHeader = (startY) => {
+          doc.fillColor('#4F46E5')
+             .rect(margin, startY, contentWidth, 24)
+             .fill();
+
+          const colX = [margin + 8, margin + 35, margin + 280, margin + 350, margin + 430];
+          const colW = [25, 240, 65, 75, 80];
+
+          doc.fillColor('#FFFFFF')
+             .fontSize(8)
+             .font('Helvetica-Bold')
+             .text('#', colX[0], startY + 7, { width: colW[0] })
+             .text('Item & Description', colX[1], startY + 7, { width: colW[1] })
+             .text('Qty', colX[2], startY + 7, { width: colW[2], align: 'center' })
+             .text('Unit Price', colX[3], startY + 7, { width: colW[3], align: 'right' })
+             .text('Total Price', colX[4], startY + 7, { width: colW[4], align: 'right' });
+
+          return startY + 24;
+        };
+
+        currentY = drawTableHeader(currentY);
+
+        // ============ PRODUCT ROWS ============
+        let items = order.items || [];
         let subtotal = 0;
-        let maxProducts = 8;
-        
-        const products = order.items || [];
-        const displayProducts = products.slice(0, maxProducts);
-        
-        displayProducts.forEach((item, index) => {
-          const rowY = currentY + 8;
+
+        items.forEach((item, index) => {
+          const qty = Number(item.quantity) || 1;
+          const price = Number(item.price) || 0;
+          const lineTotal = price * qty;
+          subtotal += lineTotal;
+
+          const productName = item.name || 'Product';
           
-          // Alternate row colors
+          // Calculate needed height for description line wrapping
+          const descWidth = 240;
+          doc.fontSize(8.5).font('Helvetica');
+          const textHeight = doc.heightOfString(productName, { width: descWidth });
+          const rowHeight = Math.max(22, textHeight + 10);
+
+          // Page break check (Page bottom limit ~ 730 points)
+          if (currentY + rowHeight > 730) {
+            doc.addPage();
+            currentY = margin + 20;
+            currentY = drawTableHeader(currentY);
+          }
+
+          // Alternate Row Background
           if (index % 2 === 0) {
-            doc.fillColor('#F9FAFB')
-               .rect(40, currentY, 515, 25)
+            doc.fillColor('#F8FAFC')
+               .rect(margin, currentY, contentWidth, rowHeight)
                .fill();
           }
-          
-          // Product name
-          const productName = item.name || 'Product';
-          const displayName = productName.length > 40 ? 
-            productName.substring(0, 37) + '...' : productName;
-          
-          const quantity = item.quantity || 1;
-          const price = item.price || 0;
-          const itemTotal = price * quantity;
-          subtotal += itemTotal;
-          
-          doc.fontSize(9)
-             .fillColor('#1F2937')
+
+          const colX = [margin + 8, margin + 35, margin + 280, margin + 350, margin + 430];
+          const colW = [25, 240, 65, 75, 80];
+
+          // Index #
+          doc.fillColor('#475569')
+             .fontSize(8.5)
              .font('Helvetica')
-             .text(displayName, colX[0] + 5, rowY, { width: colWidths[0] - 10 })
-             .text(quantity.toString(), colX[1], rowY, { width: colWidths[1], align: 'center' })
-             .text(`₹${price.toFixed(2)}`, colX[2], rowY, { width: colWidths[2], align: 'center' })
-             .text(`₹${itemTotal.toFixed(2)}`, colX[3], rowY, { width: colWidths[3] - 5, align: 'right' });
-          
-          // Row border
-          doc.strokeColor('#E5E7EB')
+             .text((index + 1).toString(), colX[0], currentY + 6, { width: colW[0] });
+
+          // Product Name (wrapped dynamically)
+          doc.fillColor('#0F172A')
+             .fontSize(8.5)
+             .font('Helvetica-Bold')
+             .text(productName, colX[1], currentY + 6, { width: colW[1] });
+
+          // Quantity
+          doc.fillColor('#1E293B')
+             .font('Helvetica')
+             .text(qty.toString(), colX[2], currentY + 6, { width: colW[2], align: 'center' });
+
+          // Unit Price
+          doc.text(`₹${price.toFixed(2)}`, colX[3], currentY + 6, { width: colW[3], align: 'right' });
+
+          // Total Price
+          doc.font('Helvetica-Bold')
+             .text(`₹${lineTotal.toFixed(2)}`, colX[4], currentY + 6, { width: colW[4], align: 'right' });
+
+          // Bottom Border
+          doc.strokeColor('#F1F5F9')
              .lineWidth(0.5)
-             .moveTo(40, currentY + 25)
-             .lineTo(555, currentY + 25)
+             .moveTo(margin, currentY + rowHeight)
+             .lineTo(margin + contentWidth, currentY + rowHeight)
              .stroke();
-          
-          currentY += 25;
+
+          currentY += rowHeight;
         });
-        
-        // Show "..." if more products
-        if (products.length > maxProducts) {
-          const remaining = products.length - maxProducts;
-          doc.fontSize(9)
-             .fillColor('#6B7280')
-             .text(`... and ${remaining} more item(s)`, colX[0] + 5, currentY + 8);
-          currentY += 25;
+
+        // ============ CALCULATIONS & TOTALS ============
+        const tax = typeof order.taxAmount === 'number' && order.taxAmount > 0 
+          ? order.taxAmount 
+          : subtotal * 0.18;
+        const shipping = typeof order.shippingAmount === 'number' ? order.shippingAmount : (subtotal > 999 ? 0 : 50);
+        const discount = Number(order.discountAmount) || 0;
+        const grandTotal = typeof order.totalAmount === 'number' ? order.totalAmount : (subtotal + tax + shipping - discount);
+
+        // Check space for calculation box + payment info
+        if (currentY + 220 > 740) {
+          doc.addPage();
+          currentY = margin + 20;
         }
-        
-        // ============ CALCULATIONS ============
-        const tax = subtotal * 0.18;
-        const shipping = order.shippingAmount || (subtotal > 999 ? 0 : 60);
-        const discount = order.discountAmount || 0;
-        const grandTotal = subtotal + tax + shipping - discount;
-        
-        // Calculations box
-        const calcY = Math.max(currentY + 20, 450);
-        const calcX = 350;
-        
+
+        const calcBoxY = currentY + 15;
+        const calcBoxX = margin + 265;
+        const calcBoxWidth = 250;
+
+        // Calculation list items
+        const calcRows = [
+          { label: 'Subtotal', value: `₹${subtotal.toFixed(2)}` },
+          { label: 'Tax (18% GST)', value: `₹${tax.toFixed(2)}` },
+          { label: 'Shipping Charges', value: shipping === 0 ? 'FREE' : `₹${shipping.toFixed(2)}` }
+        ];
+
+        if (discount > 0) {
+          const couponText = order.couponCode ? `Discount (${order.couponCode})` : 'Discount';
+          calcRows.push({ label: couponText, value: `-₹${discount.toFixed(2)}`, isDiscount: true });
+        }
+
+        const calcBoxHeight = (calcRows.length * 20) + 45;
+
+        // Render calculations box
         doc.fillColor('#F8FAFC')
-           .roundedRect(calcX - 10, calcY - 10, 205, 180, 5)
+           .roundedRect(calcBoxX, calcBoxY, calcBoxWidth, calcBoxHeight, 6)
            .fill()
            .strokeColor('#E2E8F0')
-           .roundedRect(calcX - 10, calcY - 10, 205, 180, 5)
+           .roundedRect(calcBoxX, calcBoxY, calcBoxWidth, calcBoxHeight, 6)
            .stroke();
-        
-        // Calculation rows
-        const calculations = [
-          { label: 'Subtotal:', value: `₹${subtotal.toFixed(2)}` },
-          { label: 'Tax (18% GST):', value: `₹${tax.toFixed(2)}` },
-          { label: 'Shipping:', value: `₹${shipping.toFixed(2)}` }
-        ];
-        
-        if (discount > 0) {
-          calculations.push({ label: 'Discount:', value: `-₹${discount.toFixed(2)}` });
-        }
-        
-        calculations.forEach((calc, index) => {
-          const yPos = calcY + (index * 25);
-          doc.fontSize(10)
-             .fillColor('#4B5563')
-             .text(calc.label, calcX, yPos, { width: 140 })
-             .fillColor('#1F2937')
-             .text(calc.value, calcX + 140, yPos, { width: 55, align: 'right' });
+
+        let rowY = calcBoxY + 10;
+        calcRows.forEach((r) => {
+          doc.fontSize(8.5)
+             .font(r.isDiscount ? 'Helvetica-Bold' : 'Helvetica')
+             .fillColor(r.isDiscount ? '#059669' : '#475569')
+             .text(r.label, calcBoxX + 12, rowY, { width: 130 });
+
+          doc.font('Helvetica-Bold')
+             .fillColor(r.isDiscount ? '#059669' : '#1E293B')
+             .text(r.value, calcBoxX + 145, rowY, { width: 92, align: 'right' });
+
+          rowY += 20;
         });
-        
-        // Separator
-        const separatorY = calcY + (calculations.length * 25) + 5;
+
+        // Grand Total Row
         doc.strokeColor('#CBD5E1')
            .lineWidth(1)
-           .moveTo(calcX, separatorY)
-           .lineTo(calcX + 195, separatorY)
+           .moveTo(calcBoxX + 10, rowY - 4)
+           .lineTo(calcBoxX + calcBoxWidth - 10, rowY - 4)
            .stroke();
-        
-        // Grand Total
-        const grandTotalY = separatorY + 15;
-        doc.fillColor('#F3F4F6')
-           .rect(calcX - 5, grandTotalY - 5, 195, 30)
+
+        doc.fillColor('#4F46E5')
+           .roundedRect(calcBoxX + 6, rowY + 2, calcBoxWidth - 12, 26, 4)
            .fill();
-        
-        doc.fontSize(12)
-           .fillColor('#111827')
-           .font('Helvetica-Bold')
-           .text('Grand Total:', calcX, grandTotalY, { width: 140 })
-           .fillColor('#059669')
-           .text(`₹${grandTotal.toFixed(2)}`, calcX + 140, grandTotalY, { 
-             width: 55, 
-             align: 'right', 
-             bold: true 
-           });
-        
-        // Amount in words
-        doc.fontSize(9)
-           .fillColor('#6B7280')
-           .text(`Amount in words: ${this.numberToWords(grandTotal)} Rupees Only`, 
-                 40, grandTotalY + 40, { width: 300 });
-        
-        // ============ PAYMENT INFO ============
-        const paymentY = grandTotalY + 70;
-        doc.fillColor('#111827')
-           .fontSize(11)
-           .font('Helvetica-Bold')
-           .text('Payment Information:', 40, paymentY);
-        
+
         doc.fontSize(10)
-           .fillColor('#374151')
-           .text(`Payment Method: ${order.paymentMethod}`, 40, paymentY + 20)
-           .text(`Payment Status: ${order.paymentStatus.toUpperCase()}`, 40, paymentY + 40)
-           .text(`Order Status: ${order.orderStatus}`, 40, paymentY + 60);
-        
-        if (order.razorpayPaymentId) {
-          doc.text(`Transaction ID: ${order.razorpayPaymentId}`, 40, paymentY + 80);
-        }
-        
-        // Payment note for pending
-        if (order.paymentStatus === 'pending' && order.paymentMethod !== 'COD') {
-          doc.fillColor('#DC2626')
-             .fontSize(9)
-             .text('Please complete payment within 7 days to avoid order cancellation.', 
-                   40, paymentY + 100, { width: 300 });
-        }
-        
-        // ============ FOOTER ============
-        const footerY = 750;
-        doc.strokeColor('#E5E7EB')
-           .lineWidth(0.5)
-           .moveTo(40, footerY)
-           .lineTo(555, footerY)
-           .stroke();
-        
-        doc.fontSize(8)
-           .fillColor('#6B7280')
-           .text('This is a computer generated invoice.', 40, footerY + 10)
-           .text('Goods once sold will not be taken back.', 40, footerY + 22)
-           .text('Subject to Mumbai jurisdiction only.', 40, footerY + 34)
-           .text('www.shopeasy.com', 400, footerY + 10, { width: 155, align: 'right' })
-           .text('support@shopeasy.com', 400, footerY + 22, { width: 155, align: 'right' })
-           .text('Phone: 1800-123-4567', 400, footerY + 34, { width: 155, align: 'right' });
-        
-        // Page number
-        doc.fontSize(9)
-           .fillColor('#4F46E5')
            .font('Helvetica-Bold')
-           .text('Page 1 of 1', 280, footerY + 50, { width: 100, align: 'center' });
-        
+           .fillColor('#FFFFFF')
+           .text('Grand Total:', calcBoxX + 15, rowY + 10, { width: 110 })
+           .text(`₹${grandTotal.toFixed(2)}`, calcBoxX + 130, rowY + 10, { width: 105, align: 'right' });
+
+        // Left Side: Amount in Words & Payment / Tracking Details
+        let leftSideY = calcBoxY;
+
+        // Amount in Words
+        doc.fontSize(8)
+           .font('Helvetica-Bold')
+           .fillColor('#475569')
+           .text('AMOUNT IN WORDS:', margin, leftSideY);
+
+        doc.fontSize(8.5)
+           .font('Helvetica')
+           .fillColor('#0F172A')
+           .text(`${this.numberToWords(grandTotal)} Rupees Only`, margin, leftSideY + 12, { width: 245 });
+
+        leftSideY += 40;
+
+        // Payment Info
+        doc.fontSize(8)
+           .font('Helvetica-Bold')
+           .fillColor('#475569')
+           .text('PAYMENT INFORMATION:', margin, leftSideY);
+
+        doc.fontSize(8.5)
+           .font('Helvetica')
+           .fillColor('#334155')
+           .text(`Method: ${order.paymentMethod || 'COD'}`, margin, leftSideY + 12)
+           .text(`Status: ${(order.paymentStatus || 'pending').toUpperCase()}`, margin, leftSideY + 24);
+
+        if (order.razorpayPaymentId) {
+          doc.text(`Txn ID: ${order.razorpayPaymentId}`, margin, leftSideY + 36);
+          leftSideY += 12;
+        }
+
+        leftSideY += 42;
+
+        // Tracking & Notes (If present)
+        if (order.trackingNumber || order.courierName || order.adminNotes) {
+          doc.fontSize(8)
+             .font('Helvetica-Bold')
+             .fillColor('#475569')
+             .text('DISPATCH & NOTES:', margin, leftSideY);
+
+          let noteLine = leftSideY + 12;
+          if (order.courierName) {
+            doc.fontSize(8.5).font('Helvetica').fillColor('#334155').text(`Courier: ${order.courierName}`, margin, noteLine);
+            noteLine += 12;
+          }
+          if (order.trackingNumber) {
+            doc.fontSize(8.5).font('Helvetica').fillColor('#334155').text(`Tracking #: ${order.trackingNumber}`, margin, noteLine);
+            noteLine += 12;
+          }
+          if (order.adminNotes) {
+            doc.fontSize(8.5).font('Helvetica-Oblique').fillColor('#475569').text(`Note: ${order.adminNotes}`, margin, noteLine, { width: 245 });
+          }
+        }
+
+        // ============ FOOTER ON ALL PAGES ============
+        const pages = doc.bufferedPageRange();
+        for (let i = 0; i < pages.count; i++) {
+          doc.switchToPage(i);
+
+          const footerY = pageHeight - 45;
+
+          doc.strokeColor('#E2E8F0')
+             .lineWidth(0.5)
+             .moveTo(margin, footerY)
+             .lineTo(margin + contentWidth, footerY)
+             .stroke();
+
+          doc.fontSize(7.5)
+             .font('Helvetica')
+             .fillColor('#94A3B8')
+             .text('This is a computer generated invoice and does not require a physical signature.', margin, footerY + 6, { lineBreak: false })
+             .text('Goods once sold will not be taken back | Subject to Mumbai jurisdiction only', margin, footerY + 16, { lineBreak: false });
+
+          doc.fontSize(8)
+             .font('Helvetica-Bold')
+             .fillColor('#4F46E5')
+             .text(`Page ${i + 1} of ${pages.count}`, margin + 400, footerY + 6, { width: 115, align: 'right', lineBreak: false });
+
+          doc.fontSize(7.5)
+             .font('Helvetica')
+             .fillColor('#64748B')
+             .text('www.shopeasy.com', margin + 400, footerY + 16, { width: 115, align: 'right', lineBreak: false });
+        }
+
         doc.end();
-        
+
         stream.on('finish', () => {
-          console.log(`✅ Invoice generated: ${fileName}`);
+          console.log(`✅ Professional Invoice PDF generated: ${fileName}`);
           resolve({
             invoiceNumber,
             pdfPath: filePath,
@@ -361,9 +455,9 @@ class PDFGenerator {
             invoiceUrl: `/downloads/invoices/${fileName}`
           });
         });
-        
+
         stream.on('error', reject);
-        
+
       } catch (error) {
         console.error('PDF Generation Error:', error);
         reject(error);

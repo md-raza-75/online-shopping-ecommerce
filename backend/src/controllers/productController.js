@@ -37,8 +37,15 @@ const getAdminProducts = async (req, res) => {
         } 
       : {};
 
-    const count = await Product.countDocuments({ ...keyword });
-    const products = await Product.find({ ...keyword })
+    // Filter by seller if seller user is calling
+    const filter = { ...keyword };
+    if (req.user && req.user.role === 'seller') {
+      filter.seller = req.user._id;
+    }
+
+    const count = await Product.countDocuments(filter);
+    const products = await Product.find(filter)
+      .populate('seller', 'name storeName email')
       .limit(pageSize)
       .skip(pageSize * (page - 1))
       .sort({ createdAt: -1 });
@@ -118,7 +125,7 @@ const createProduct = async (req, res) => {
       stock,
       image: image || '/images/default-product.jpg',
       category,
-      user: req.user._id
+      seller: req.user._id
     });
     
     const createdProduct = await product.save();
@@ -150,6 +157,14 @@ const updateProduct = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Product not found'
+      });
+    }
+
+    // Check ownership if seller
+    if (req.user.role === 'seller' && product.seller && product.seller.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: You can only edit your own products'
       });
     }
     
@@ -197,6 +212,14 @@ const deleteProduct = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Product not found'
+      });
+    }
+
+    // Check ownership if seller
+    if (req.user.role === 'seller' && product.seller && product.seller.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: You can only delete your own products'
       });
     }
     
@@ -355,9 +378,32 @@ const deleteProductReview = async (req, res) => {
   }
 };
 
+// @desc    Get products belonging to seller
+// @route   GET /api/seller/products
+// @access  Private/Seller
+const getSellerProducts = async (req, res) => {
+  try {
+    const products = await Product.find({ seller: req.user._id, isActive: true })
+      .sort({ createdAt: -1 });
+    
+    return res.json({
+      success: true,
+      count: products.length,
+      data: products
+    });
+  } catch (error) {
+    console.error('Get seller products error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Server error'
+    });
+  }
+};
+
 module.exports = {
   getProducts,
   getAdminProducts,
+  getSellerProducts,
   getProductById,
   createProduct,
   updateProduct,

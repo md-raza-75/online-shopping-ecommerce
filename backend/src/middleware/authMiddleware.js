@@ -78,4 +78,53 @@ const admin = (req, res, next) => {
   }
 };
 
-module.exports = { protect, admin };
+// Seller middleware (seller role or admin)
+const seller = (req, res, next) => {
+  try {
+    if (req.user && (req.user.role === 'seller' || req.user.role === 'admin')) {
+      return next();
+    }
+    
+    return res.status(403).json({ 
+      success: false,
+      message: 'Not authorized as a seller' 
+    });
+  } catch (error) {
+    console.error('Seller middleware error:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Server error' 
+    });
+  }
+};
+
+// Approved Seller middleware (must be approved by Super Admin)
+const approvedSeller = (req, res, next) => {
+  try {
+    if (req.user && req.user.role === 'admin') {
+      return next();
+    }
+    if (req.user && req.user.role === 'seller') {
+      if (req.user.sellerStatus === 'approved') {
+        return next();
+      }
+      return res.status(403).json({
+        success: false,
+        message: 'Your seller account is pending Super Admin approval. Access restricted.'
+      });
+    }
+    
+    return res.status(403).json({ 
+      success: false,
+      message: 'Not authorized as seller' 
+    });
+  } catch (error) {
+    console.error('Approved seller middleware error:', error);
+    return res.status(500).json({ 
+      success: false,
+      message: 'Server error' 
+    });
+  }
+};
+
+module.exports = { protect, admin, seller, approvedSeller };

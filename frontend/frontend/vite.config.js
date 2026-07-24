@@ -6,15 +6,13 @@ export default defineConfig({
   server: {
     port: 5173,
 
-    // ✅ Cloudflare Tunnel Host Allow
     allowedHosts: true,
 
     proxy: {
       '/api': {
-        // ✅ Updated Backend Tunnel URL
-        target:  'https://steal-wayne-gained-vol.trycloudflare.com',
+        target: 'http://localhost:5000',
         changeOrigin: true,
-        secure: true,
+        secure: false,
       }
     }
   }

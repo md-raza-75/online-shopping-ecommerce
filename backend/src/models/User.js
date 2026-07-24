@@ -1,6 +1,17 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
+const addressSchema = new mongoose.Schema({
+  name: String,
+  phone: String,
+  address: String,
+  city: String,
+  state: String,
+  postalCode: String,
+  country: { type: String, default: 'India' },
+  isDefault: { type: Boolean, default: false }
+}, { _id: false });
+
 const userSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -22,10 +33,36 @@ const userSchema = new mongoose.Schema({
     required: [true, 'Please enter password'],
     minlength: [6, 'Password must be at least 6 characters']
   },
+  phone: {
+    type: String,
+    default: null
+  },
   role: {
     type: String,
-    enum: ['user', 'admin'],
+    enum: ['user', 'seller', 'admin'],
     default: 'user'
+  },
+  sellerStatus: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'pending'
+  },
+  storeName: {
+    type: String,
+    trim: true,
+    default: null
+  },
+  isBlocked: {
+    type: Boolean,
+    default: false
+  },
+  lastLogin: {
+    type: Date,
+    default: null
+  },
+  addresses: {
+    type: [addressSchema],
+    default: []
   },
   createdAt: {
     type: Date,

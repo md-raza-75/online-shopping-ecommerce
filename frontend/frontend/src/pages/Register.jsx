@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FaUserPlus, FaGoogle, FaFacebook,
-  FaEnvelope, FaLock, FaUser,
+  FaEnvelope, FaLock, FaUser, FaStore,
   FaShieldAlt, FaRocket, FaHandshake, FaCreditCard,
   FaStar, FaCheckCircle, FaBolt, FaLeaf,
   FaGlobe, FaHeart, FaEye, FaEyeSlash
@@ -123,7 +123,7 @@ const STRENGTH_LABELS = ['Weak', 'Fair', 'Good', 'Strong'];
 
 // ─── Component ────────────────────────────────────────────────────────────────
 const Register = () => {
-  const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' });
+  const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '', role: 'user', storeName: '' });
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
   const [showPw, setShowPw]     = useState(false);
@@ -203,11 +203,22 @@ const Register = () => {
     setLoading(true);
     setError('');
     try {
-      const data = await register(formData.name, formData.email, formData.password);
+      const extraData = {
+        role: formData.role,
+        storeName: formData.role === 'seller' ? (formData.storeName || `${formData.name}'s Store`) : null
+      };
+      const data = await register(formData.name, formData.email, formData.password, extraData);
       localStorage.setItem('userInfo', JSON.stringify(data.data));
-      toast.success('🎉 Account created! Welcome to ShopEasy!');
-      window.dispatchEvent(new Event('userLogin'));
-      navigate(redirect);
+      
+      if (formData.role === 'seller') {
+        toast.success('🎉 Seller account created! Pending Super Admin approval.');
+        window.dispatchEvent(new Event('userLogin'));
+        navigate('/seller');
+      } else {
+        toast.success('🎉 Account created! Welcome to ShopEasy!');
+        window.dispatchEvent(new Event('userLogin'));
+        navigate(redirect);
+      }
     } catch (err) {
       setError(typeof err === 'string' ? err : 'Registration failed. Please try again.');
       toast.error('Registration failed.');
@@ -612,6 +623,46 @@ const Register = () => {
 
             {/* Form */}
             <form onSubmit={submitHandler}>
+              {/* Account Role Selector */}
+              <div className="mb-3">
+                <label className="form-label fw-bold text-dark small text-uppercase mb-2">Account Type</label>
+                <div className="d-flex gap-2">
+                  <button
+                    type="button"
+                    className={`btn flex-fill py-2 fw-bold text-sm rounded-3 ${formData.role === 'user' ? 'btn-primary' : 'btn-light border'}`}
+                    onClick={() => setFormData({ ...formData, role: 'user' })}
+                  >
+                    🛍 Customer
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn flex-fill py-2 fw-bold text-sm rounded-3 ${formData.role === 'seller' ? 'btn-primary' : 'btn-light border'}`}
+                    onClick={() => setFormData({ ...formData, role: 'seller' })}
+                  >
+                    🏬 Seller / Vendor
+                  </button>
+                </div>
+              </div>
+
+              {/* Store Name if Seller */}
+              {formData.role === 'seller' && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  className="reg-input-group mb-3"
+                >
+                  <FaStore className="reg-input-icon" />
+                  <input
+                    type="text"
+                    name="storeName"
+                    className="reg-input"
+                    placeholder="Store / Shop Name"
+                    value={formData.storeName}
+                    onChange={handleChange}
+                    required={formData.role === 'seller'}
+                  />
+                </motion.div>
+              )}
               {/* Name */}
               <div className="reg-input-group">
                 <FaUser className="reg-input-icon" />
