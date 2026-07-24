@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   FaShoppingCart, FaUser, FaSignOutAlt, FaHome, FaBox, 
-  FaBars, FaStore, FaShoppingBag, FaTag, FaChartLine, FaUsers, FaTimes
+  FaBars, FaStore, FaShoppingBag, FaTag, FaChartLine, FaUsers, FaTimes, FaHeart
 } from 'react-icons/fa';
 import './Navbar.css';
 
@@ -106,6 +106,11 @@ const Navbar = () => {
         </div>
 
         <div className="navbar-actions d-none d-lg-flex">
+          <Link to="/wishlist" className={`nav-link ${isActive('/wishlist') ? 'active' : ''}`}>
+            <FaHeart className="nav-icon text-danger" />
+            <span>Wishlist</span>
+          </Link>
+
           <Link to="/cart" className={`nav-link cart-link ${isActive('/cart') ? 'active' : ''}`}>
             <FaShoppingCart className="nav-icon" />
             <span>Cart</span>
@@ -149,6 +154,7 @@ const Navbar = () => {
                     <div className="dropdown-divider"></div>
                     <Link to="/profile" className="dropdown-item"><FaUser /> My Profile</Link>
                     <Link to="/orders" className="dropdown-item"><FaBox /> My Orders</Link>
+                    <Link to="/wishlist" className="dropdown-item"><FaHeart className="text-danger" /> Wishlist</Link>
                     
                     {userInfo.role === 'seller' && (
                       <>
@@ -170,6 +176,7 @@ const Navbar = () => {
                         <Link to="/admin/coupons" className="dropdown-item"><FaTag /> Coupons</Link>
                         <Link to="/admin/users" className="dropdown-item"><FaUsers /> Users</Link>
                         <Link to="/admin/sellers" className="dropdown-item"><FaStore /> Seller Approvals</Link>
+                        <Link to="/admin/seller-analytics" className="dropdown-item"><FaChartLine /> Seller Performance</Link>
                       </>
                     )}
                     <div className="dropdown-divider"></div>

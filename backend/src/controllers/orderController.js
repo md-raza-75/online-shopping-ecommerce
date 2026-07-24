@@ -2,9 +2,11 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
 const Coupon = require('../models/Coupon');
+const { createNotification } = require('./notificationController');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+
 
 // ✅ Conditional Razorpay initialization
 let razorpay = null;
@@ -636,6 +638,26 @@ const updateOrderStatus = async (req, res) => {
     
     const updatedOrder = await order.save();
     
+    // Send in-app notification to user
+    const statusMessages = {
+      pending: 'Your order has been placed and is pending confirmation.',
+      processing: 'Your order is being processed.',
+      shipped: `Your order has been shipped${trackingNumber ? ` (Tracking: ${trackingNumber})` : ''}.`,
+      delivered: 'Your order has been delivered! You can now download the invoice.',
+      cancelled: 'Your order has been cancelled.'
+    };
+    try {
+      await createNotification(
+        order.user,
+        `Order Status: ${orderStatus.charAt(0).toUpperCase() + orderStatus.slice(1)}`,
+        statusMessages[orderStatus] || `Your order status has been updated to ${orderStatus}.`,
+        'order_update',
+        order._id
+      );
+    } catch (notifError) {
+      console.error('Notification error (non-blocking):', notifError.message);
+    }
+    
     res.json({
       success: true,
       data: updatedOrder,
@@ -1077,6 +1099,84 @@ const getSellerStats = async (req, res) => {
   }
 };
 
+// @desc    Cancel an order (User - only pending orders)
+// @route   PUT /api/orders/:id/cancel
+// @access  Private
+const cancelOrder = async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (order.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized to cancel this order' });
+    }
+    if (order.orderStatus !== 'pending') {
+      return res.status(400).json({ success: false, message: 'Only pending orders can be cancelled.' });
+    }
+
+    order.orderStatus = 'cancelled';
+    order.cancellationReason = reason || 'Cancelled by customer';
+
+    // Restore stock
+    for (const item of order.items) {
+      await Product.findByIdAndUpdate(item.product, { $inc: { stock: item.quantity } });
+    }
+
+    await order.save();
+
+    await createNotification(
+      order.user,
+      'Order Cancelled',
+      `Your order has been cancelled. ${reason ? `Reason: ${reason}` : ''}`,
+      'order_cancelled',
+      order._id
+    );
+
+    res.json({ success: true, message: 'Order cancelled successfully', data: order });
+  } catch (error) {
+    console.error('Cancel order error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Server error' });
+  }
+};
+
+// @desc    Request return for a delivered order (User)
+// @route   PUT /api/orders/:id/return
+// @access  Private
+const requestReturn = async (req, res) => {
+  try {
+    const { reason } = req.body;
+    if (!reason) return res.status(400).json({ success: false, message: 'Please provide a reason for the return request' });
+
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (order.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+    if (order.orderStatus !== 'delivered') {
+      return res.status(400).json({ success: false, message: 'Return requests can only be made for delivered orders.' });
+    }
+    if (order.returnRequest?.requested) {
+      return res.status(400).json({ success: false, message: 'A return request has already been submitted for this order.' });
+    }
+
+    order.returnRequest = { requested: true, reason, status: 'pending', requestedAt: new Date() };
+    await order.save();
+
+    await createNotification(
+      order.user,
+      'Return Request Submitted',
+      'Your return request has been submitted and is under review.',
+      'return_update',
+      order._id
+    );
+
+    res.json({ success: true, message: 'Return request submitted successfully', data: order });
+  } catch (error) {
+    console.error('Request return error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Server error' });
+  }
+};
+
 // ✅ Module exports
 module.exports = {
   createOrder,
@@ -1089,6 +1189,8 @@ module.exports = {
   getSellerStats,
   updateOrderToPaid,
   updateOrderStatus,
+  cancelOrder,
+  requestReturn,
   downloadInvoice,
   downloadInvoiceQuick,
   getInvoiceStatus

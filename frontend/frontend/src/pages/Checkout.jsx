@@ -6,7 +6,7 @@ import {
 } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { createOrder, validateCoupon } from '../services/api';
+import { createOrder, validateCoupon, getProfile } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { getCartFromLocalStorage, clearCartFromLocalStorage } from '../services/api';
 
@@ -26,10 +26,39 @@ const Checkout = () => {
   const [couponError, setCouponError] = useState('');
   const [couponSuccess, setCouponSuccess] = useState('');
 
+  const [savedAddresses, setSavedAddresses] = useState([]);
+
   useEffect(() => {
     const items = getCartFromLocalStorage();
     setCartItems(items);
-    if (userInfo) setShippingAddress(prev => ({ ...prev, name: userInfo.name || '', phone: userInfo.phone || '' }));
+    
+    // Load profile addresses
+    const fetchUserAddresses = async () => {
+      try {
+        const res = await getProfile();
+        const userData = res.data || res;
+        if (userData.addresses && userData.addresses.length > 0) {
+          setSavedAddresses(userData.addresses);
+          // Set default address if available
+          const defaultAddr = userData.addresses.find(a => a.isDefault) || userData.addresses[0];
+          setShippingAddress({
+            name: defaultAddr.name || userData.name || '',
+            address: defaultAddr.address || '',
+            city: defaultAddr.city || '',
+            state: defaultAddr.state || '',
+            postalCode: defaultAddr.postalCode || '',
+            country: defaultAddr.country || 'India',
+            phone: defaultAddr.phone || userData.phone || ''
+          });
+        } else if (userInfo) {
+          setShippingAddress(prev => ({ ...prev, name: userInfo.name || '', phone: userInfo.phone || '' }));
+        }
+      } catch (err) {
+        if (userInfo) setShippingAddress(prev => ({ ...prev, name: userInfo.name || '', phone: userInfo.phone || '' }));
+      }
+    };
+    fetchUserAddresses();
+
     const savedCoupon = localStorage.getItem('checkoutCoupon');
     if (savedCoupon) {
       setAppliedCoupon(JSON.parse(savedCoupon));
@@ -170,6 +199,37 @@ const Checkout = () => {
               <h4 className="fw-bold mb-4 pb-3 border-bottom d-flex align-items-center gap-2">
                 <FaMapMarkerAlt className="text-primary" /> Shipping Address
               </h4>
+
+              {savedAddresses.length > 0 && (
+                <div className="mb-4 p-3 bg-light rounded-3 border">
+                  <label className="fw-bold text-dark mb-2">Select from Saved Addresses:</label>
+                  <select 
+                    className="form-select border-0 shadow-sm py-2"
+                    onChange={(e) => {
+                      const idx = parseInt(e.target.value);
+                      if (!isNaN(idx) && savedAddresses[idx]) {
+                        const addr = savedAddresses[idx];
+                        setShippingAddress({
+                          name: addr.name || '',
+                          address: addr.address || '',
+                          city: addr.city || '',
+                          state: addr.state || '',
+                          postalCode: addr.postalCode || '',
+                          country: addr.country || 'India',
+                          phone: addr.phone || ''
+                        });
+                      }
+                    }}
+                  >
+                    <option value="">-- Choose a saved address --</option>
+                    {savedAddresses.map((addr, idx) => (
+                      <option key={idx} value={idx}>
+                        {addr.name} - {addr.address}, {addr.city} ({addr.postalCode}) {addr.isDefault ? '[Default]' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="row g-3">
                 <div className="col-md-6">
                   <label className="fw-bold text-muted mb-2">Full Name *</label>

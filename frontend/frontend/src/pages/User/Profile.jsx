@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { 
   FaUser, FaEnvelope, FaCalendarAlt, FaEdit, FaSave,
-  FaShoppingBag, FaMapMarkerAlt, FaPhone, FaLock, FaShieldAlt
+  FaShoppingBag, FaMapMarkerAlt, FaPhone, FaLock, FaPlus, FaTrash, FaCheck, FaHeart
 } from 'react-icons/fa';
 import { toast } from 'react-toastify';
-import { getProfile } from '../../services/api';
+import { Form, Button, Modal, Badge, Card, Row, Col } from 'react-bootstrap';
+import { getProfile, updateProfile, addAddress, deleteAddress, setDefaultAddress } from '../../services/api';
 import Loader, { PageLoader } from '../../components/Loader';
 import { Link } from 'react-router-dom';
 
@@ -14,51 +15,111 @@ const Profile = () => {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [activeTab, setActiveTab] = useState('profile');
+
+  // Edit Profile Form State
   const [editMode, setEditMode] = useState(false);
-  const [formData, setFormData] = useState({ name: '', email: '', phone: '', address: '' });
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+
+  // Address Modal State
+  const [showAddressModal, setShowAddressModal] = useState(false);
+  const [addressForm, setAddressForm] = useState({
+    name: '',
+    phone: '',
+    address: '',
+    city: '',
+    state: '',
+    postalCode: '',
+    country: 'India',
+    isDefault: false
+  });
+  const [addingAddress, setAddingAddress] = useState(false);
 
   useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        const userInfo = JSON.parse(localStorage.getItem('userInfo') || 'null');
-        if (!userInfo) {
-          window.location.href = '/login';
-          return;
-        }
-        const data = await getProfile();
-        const userData = data.data || data;
-        setUser(userData);
-        setFormData({
-          name: userData.name || '',
-          email: userData.email || '',
-          phone: userData.phone || '',
-          address: userData.address || ''
-        });
-        setLoading(false);
-      } catch (error) {
-        toast.error('Failed to load profile');
-        setLoading(false);
-      }
-    };
     fetchProfile();
   }, []);
 
-  const handleInputChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+  const fetchProfile = async () => {
+    try {
+      const userInfo = JSON.parse(localStorage.getItem('userInfo') || 'null');
+      if (!userInfo) {
+        window.location.href = '/login';
+        return;
+      }
+      const res = await getProfile();
+      const userData = res.data || res;
+      setUser(userData);
+      setName(userData.name || '');
+      setPhone(userData.phone || '');
+      setLoading(false);
+    } catch (error) {
+      toast.error('Failed to load profile');
+      setLoading(false);
+    }
+  };
 
-  const handleSubmit = async (e) => {
-    e?.preventDefault();
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault();
     setUpdating(true);
     try {
-      const updatedUser = { ...user, ...formData };
-      setUser(updatedUser);
+      const payload = { name, phone };
+      if (newPassword) {
+        payload.password = newPassword;
+        payload.currentPassword = currentPassword;
+      }
+      const res = await updateProfile(payload);
+      toast.success(res.message || 'Profile updated successfully!');
+
+      // Sync localStorage
       const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
-      localStorage.setItem('userInfo', JSON.stringify({ ...userInfo, name: formData.name, email: formData.email }));
-      toast.success('Profile updated successfully!');
+      localStorage.setItem('userInfo', JSON.stringify({ ...userInfo, name: res.data.name, phone: res.data.phone }));
+      
+      setUser({ ...user, ...res.data });
       setEditMode(false);
+      setCurrentPassword('');
+      setNewPassword('');
     } catch (error) {
-      toast.error('Failed to update profile');
+      toast.error(error.message || 'Failed to update profile');
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const handleAddAddress = async (e) => {
+    e.preventDefault();
+    setAddingAddress(true);
+    try {
+      const res = await addAddress(addressForm);
+      toast.success('Address added successfully');
+      setUser({ ...user, addresses: res.data });
+      setShowAddressModal(false);
+      setAddressForm({ name: '', phone: '', address: '', city: '', state: '', postalCode: '', country: 'India', isDefault: false });
+    } catch (error) {
+      toast.error(error.message || 'Failed to add address');
+    } finally {
+      setAddingAddress(false);
+    }
+  };
+
+  const handleDeleteAddress = async (index) => {
+    try {
+      const res = await deleteAddress(index);
+      toast.success('Address removed');
+      setUser({ ...user, addresses: res.data });
+    } catch (error) {
+      toast.error('Failed to delete address');
+    }
+  };
+
+  const handleSetDefaultAddress = async (index) => {
+    try {
+      const res = await setDefaultAddress(index);
+      toast.success('Default address updated');
+      setUser({ ...user, addresses: res.data });
+    } catch (error) {
+      toast.error('Failed to update default address');
     }
   };
 
@@ -77,192 +138,245 @@ const Profile = () => {
 
   return (
     <div className="container py-5">
-      <motion.div 
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mb-5 text-center"
-      >
-        <h1 className="fw-bold display-5 gradient-text mb-2">My Profile</h1>
-        <p className="text-muted lead">Manage your account settings and preferences</p>
+      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-5 text-center">
+        <h1 className="fw-bold display-5 gradient-text mb-2">My Profile & Account</h1>
+        <p className="text-muted lead">Manage your personal details, addresses, and wishlist</p>
       </motion.div>
 
       <div className="row g-4">
-        {/* Left Column: User Card & Stats */}
+        {/* Left Column: User Overview Card */}
         <div className="col-lg-4">
-          <motion.div 
-            initial={{ opacity: 0, x: -50 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="d-flex flex-column gap-4"
-          >
-            {/* User Card */}
-            <div className="glass-card text-center p-4">
-              <div className="position-relative d-inline-block mb-4">
-                <div 
-                  className="rounded-circle d-flex align-items-center justify-content-center shadow"
-                  style={{ width: '120px', height: '120px', background: 'linear-gradient(135deg, var(--primary-blue), var(--primary-purple))' }}
-                >
-                  <FaUser size={50} className="text-white" />
-                </div>
-                {user.role === 'admin' && (
-                  <div className="position-absolute bottom-0 end-0 bg-danger text-white rounded-circle p-2 shadow-sm d-flex align-items-center justify-content-center" title="Admin">
-                    <FaShieldAlt size={16} />
-                  </div>
-                )}
-              </div>
-              <h3 className="fw-bold text-dark mb-1">{user.name}</h3>
-              <p className="text-muted mb-3 d-flex align-items-center justify-content-center gap-2">
-                <FaEnvelope /> {user.email}
-              </p>
-              <span className={`premium-badge ${user.role === 'admin' ? 'badge-danger' : 'badge-primary'} px-3 py-2 fs-6`}>
-                {user.role === 'admin' ? 'Administrator' : 'Customer'}
-              </span>
-              
-              <hr className="my-4 text-muted opacity-25" />
-              
-              <div className="text-muted d-flex align-items-center justify-content-center gap-2">
-                <FaCalendarAlt /> Joined {new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-              </div>
+          <div className="glass-card text-center p-4 shadow-sm rounded-4 mb-4">
+            <div 
+              className="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center mx-auto mb-3 shadow"
+              style={{ width: '90px', height: '90px', fontSize: '2.5rem', fontWeight: 'bold' }}
+            >
+              {user.name?.charAt(0).toUpperCase()}
             </div>
+            <h4 className="fw-bold text-dark mb-1">{user.name}</h4>
+            <p className="text-muted small mb-2"><FaEnvelope className="me-1" /> {user.email}</p>
+            <Badge bg={user.role === 'admin' ? 'danger' : user.role === 'seller' ? 'warning' : 'primary'} className="px-3 py-2 text-uppercase mb-3">
+              {user.role}
+            </Badge>
 
-            {/* Stats Card */}
-            <div className="glass-panel p-4">
-              <h5 className="fw-bold mb-4">Account Overview</h5>
-              <div className="d-flex flex-column gap-3">
-                <div className="d-flex justify-content-between align-items-center p-3 bg-white rounded-3 shadow-sm border">
-                  <div className="d-flex align-items-center gap-3">
-                    <div className="bg-primary bg-opacity-10 text-primary p-2 rounded"><FaShoppingBag /></div>
-                    <span className="fw-bold text-muted">Total Orders</span>
-                  </div>
-                  <strong className="fs-5 text-dark">12</strong>
-                </div>
-                <div className="d-flex justify-content-between align-items-center p-3 bg-white rounded-3 shadow-sm border">
-                  <div className="d-flex align-items-center gap-3">
-                    <div className="bg-warning bg-opacity-10 text-warning p-2 rounded"><FaUser /></div>
-                    <span className="fw-bold text-muted">Pending Orders</span>
-                  </div>
-                  <strong className="fs-5 text-dark">2</strong>
-                </div>
-                <div className="d-flex justify-content-between align-items-center p-3 bg-white rounded-3 shadow-sm border">
-                  <div className="d-flex align-items-center gap-3">
-                    <div className="bg-success bg-opacity-10 text-success p-2 rounded"><FaShieldAlt /></div>
-                    <span className="fw-bold text-muted">Total Spent</span>
-                  </div>
-                  <strong className="fs-5 text-success">₹12,456</strong>
-                </div>
-              </div>
+            <hr />
+
+            <div className="d-flex flex-column gap-2 text-start">
+              <Button 
+                variant={activeTab === 'profile' ? 'primary' : 'light'} 
+                className="w-100 text-start d-flex align-items-center gap-2 rounded-3 py-2"
+                onClick={() => setActiveTab('profile')}
+              >
+                <FaUser /> Personal Information
+              </Button>
+              <Button 
+                variant={activeTab === 'addresses' ? 'primary' : 'light'} 
+                className="w-100 text-start d-flex align-items-center gap-2 rounded-3 py-2"
+                onClick={() => setActiveTab('addresses')}
+              >
+                <FaMapMarkerAlt /> Saved Addresses ({user.addresses?.length || 0})
+              </Button>
+              <Button 
+                as={Link} to="/wishlist" 
+                variant="light" 
+                className="w-100 text-start d-flex align-items-center gap-2 rounded-3 py-2 text-decoration-none text-dark"
+              >
+                <FaHeart className="text-danger" /> My Wishlist
+              </Button>
+              <Button 
+                as={Link} to="/orders" 
+                variant="light" 
+                className="w-100 text-start d-flex align-items-center gap-2 rounded-3 py-2 text-decoration-none text-dark"
+              >
+                <FaShoppingBag className="text-primary" /> Order History
+              </Button>
             </div>
-          </motion.div>
+          </div>
         </div>
 
-        {/* Right Column: Content Tabs */}
+        {/* Right Column: Tab Content */}
         <div className="col-lg-8">
-          <motion.div 
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="glass-card h-100 overflow-hidden"
-          >
-            {/* Tabs Header */}
-            <div className="d-flex border-bottom bg-light">
-              {[
-                { id: 'profile', label: 'Profile Info', icon: FaUser },
-                { id: 'security', label: 'Security', icon: FaLock },
-                { id: 'orders', label: 'My Orders', icon: FaShoppingBag }
-              ].map(tab => (
-                <button
-                  key={tab.id}
-                  className={`btn border-0 py-3 px-4 fw-bold text-capitalize flex-grow-1 rounded-0 d-flex align-items-center justify-content-center gap-2 ${activeTab === tab.id ? 'text-primary bg-white border-bottom border-primary border-3' : 'text-muted hover-bg-light'}`}
-                  onClick={() => setActiveTab(tab.id)}
+          {activeTab === 'profile' && (
+            <Card className="border-0 shadow-sm rounded-4 p-4">
+              <div className="d-flex justify-content-between align-items-center mb-4">
+                <h4 className="fw-bold mb-0">Personal Information</h4>
+                <Button 
+                  variant={editMode ? 'secondary' : 'outline-primary'} 
+                  className="rounded-pill px-4"
+                  onClick={() => setEditMode(!editMode)}
                 >
-                  <tab.icon /> <span className="d-none d-sm-inline">{tab.label}</span>
-                </button>
-              ))}
-            </div>
+                  <FaEdit className="me-2" /> {editMode ? 'Cancel' : 'Edit Details'}
+                </Button>
+              </div>
 
-            {/* Tab Content */}
-            <div className="p-4 p-md-5 bg-white h-100">
-              <AnimatePresence mode="wait">
-                {activeTab === 'profile' && (
-                  <motion.div key="profile" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-                    <div className="d-flex justify-content-between align-items-center mb-4">
-                      <h4 className="fw-bold m-0">Personal Information</h4>
-                      <button 
-                        className={editMode ? "btn-premium" : "btn-premium-outline"} 
-                        onClick={() => editMode ? handleSubmit() : setEditMode(true)}
-                        disabled={updating}
-                      >
-                        {editMode ? (updating ? 'Saving...' : <><FaSave className="me-2" /> Save</>) : <><FaEdit className="me-2" /> Edit</>}
-                      </button>
-                    </div>
+              {!editMode ? (
+                <div className="row g-3">
+                  <div className="col-md-6">
+                    <label className="text-muted small fw-semibold d-block">Full Name</label>
+                    <p className="fw-bold text-dark fs-5">{user.name}</p>
+                  </div>
+                  <div className="col-md-6">
+                    <label className="text-muted small fw-semibold d-block">Email Address</label>
+                    <p className="fw-bold text-dark fs-5">{user.email}</p>
+                  </div>
+                  <div className="col-md-6">
+                    <label className="text-muted small fw-semibold d-block">Phone Number</label>
+                    <p className="fw-bold text-dark fs-5">{user.phone || 'Not provided'}</p>
+                  </div>
+                  <div className="col-md-6">
+                    <label className="text-muted small fw-semibold d-block">Account Created</label>
+                    <p className="fw-bold text-dark fs-5">{new Date(user.createdAt).toLocaleDateString()}</p>
+                  </div>
+                </div>
+              ) : (
+                <Form onSubmit={handleUpdateProfile}>
+                  <Row className="g-3">
+                    <Col md={6}>
+                      <Form.Group>
+                        <Form.Label className="fw-semibold">Full Name</Form.Label>
+                        <Form.Control type="text" value={name} onChange={(e) => setName(e.target.value)} required />
+                      </Form.Group>
+                    </Col>
+                    <Col md={6}>
+                      <Form.Group>
+                        <Form.Label className="fw-semibold">Phone Number</Form.Label>
+                        <Form.Control type="text" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 9876543210" />
+                      </Form.Group>
+                    </Col>
 
-                    <form onSubmit={handleSubmit} className="row g-4">
-                      <div className="col-md-6">
-                        <label className="fw-bold text-muted mb-2">Full Name</label>
-                        <input type="text" name="name" value={formData.name} onChange={handleInputChange} disabled={!editMode} className={`input-premium ${!editMode && 'bg-light'}`} />
-                      </div>
-                      <div className="col-md-6">
-                        <label className="fw-bold text-muted mb-2">Email Address</label>
-                        <input type="email" name="email" value={formData.email} onChange={handleInputChange} disabled={!editMode} className={`input-premium ${!editMode && 'bg-light'}`} />
-                      </div>
-                      <div className="col-md-6">
-                        <label className="fw-bold text-muted mb-2"><FaPhone className="me-2" /> Phone Number</label>
-                        <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} disabled={!editMode} placeholder="Not provided" className={`input-premium ${!editMode && 'bg-light'}`} />
-                      </div>
-                      <div className="col-12">
-                        <label className="fw-bold text-muted mb-2"><FaMapMarkerAlt className="me-2" /> Shipping Address</label>
-                        <textarea rows={3} name="address" value={formData.address} onChange={handleInputChange} disabled={!editMode} placeholder="Not provided" className={`input-premium ${!editMode && 'bg-light'}`} />
-                      </div>
-                      
-                      {editMode && (
-                        <div className="col-12 d-flex gap-3 mt-4">
-                          <button type="submit" className="btn-premium flex-grow-1 py-3" disabled={updating}>{updating ? 'Saving...' : 'Save Changes'}</button>
-                          <button type="button" className="btn btn-light border flex-grow-1 fw-bold" onClick={() => {
-                            setEditMode(false);
-                            setFormData({ name: user.name || '', email: user.email || '', phone: user.phone || '', address: user.address || '' });
-                          }}>Cancel</button>
+                    <Col md={12} className="mt-4">
+                      <h6 className="fw-bold text-muted border-bottom pb-2">Change Password (optional)</h6>
+                    </Col>
+
+                    <Col md={6}>
+                      <Form.Group>
+                        <Form.Label className="fw-semibold">Current Password</Form.Label>
+                        <Form.Control type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Required to set new password" />
+                      </Form.Group>
+                    </Col>
+                    <Col md={6}>
+                      <Form.Group>
+                        <Form.Label className="fw-semibold">New Password</Form.Label>
+                        <Form.Control type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="At least 6 characters" />
+                      </Form.Group>
+                    </Col>
+
+                    <Col md={12} className="text-end mt-4">
+                      <Button type="submit" variant="primary" size="lg" className="rounded-pill px-5" disabled={updating}>
+                        {updating ? 'Saving...' : 'Save Changes'}
+                      </Button>
+                    </Col>
+                  </Row>
+                </Form>
+              )}
+            </Card>
+          )}
+
+          {activeTab === 'addresses' && (
+            <Card className="border-0 shadow-sm rounded-4 p-4">
+              <div className="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                  <h4 className="fw-bold mb-1">Saved Addresses</h4>
+                  <p className="text-muted small mb-0">Manage addresses for fast checkout</p>
+                </div>
+                <Button variant="primary" className="rounded-pill px-4" onClick={() => setShowAddressModal(true)}>
+                  <FaPlus className="me-2" /> Add New Address
+                </Button>
+              </div>
+
+              {(!user.addresses || user.addresses.length === 0) ? (
+                <div className="text-center py-5 text-muted">
+                  <FaMapMarkerAlt size={48} className="opacity-25 mb-3" />
+                  <h5>No saved addresses</h5>
+                  <p>Add your shipping addresses here to speed up future checkouts!</p>
+                </div>
+              ) : (
+                <Row xs={1} md={2} className="g-3">
+                  {user.addresses.map((addr, index) => (
+                    <Col key={index}>
+                      <Card className={`border rounded-4 h-100 p-3 ${addr.isDefault ? 'border-primary bg-primary bg-opacity-10' : 'bg-light'}`}>
+                        <div className="d-flex justify-content-between align-items-start mb-2">
+                          <h6 className="fw-bold text-dark mb-0">{addr.name}</h6>
+                          {addr.isDefault ? (
+                            <Badge bg="primary"><FaCheck className="me-1" /> Default</Badge>
+                          ) : (
+                            <Button variant="link" size="sm" className="p-0 text-muted" onClick={() => handleSetDefaultAddress(index)}>
+                              Set Default
+                            </Button>
+                          )}
                         </div>
-                      )}
-                    </form>
-                  </motion.div>
-                )}
-
-                {activeTab === 'security' && (
-                  <motion.div key="security" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-                    <h4 className="fw-bold mb-4">Security Settings</h4>
-                    <form className="bg-light p-4 rounded-4 border">
-                      <div className="mb-3">
-                        <label className="fw-bold text-muted mb-2">Current Password</label>
-                        <input type="password" placeholder="Enter current password" className="input-premium bg-white" />
-                      </div>
-                      <div className="mb-3">
-                        <label className="fw-bold text-muted mb-2">New Password</label>
-                        <input type="password" placeholder="Enter new password" className="input-premium bg-white" />
-                      </div>
-                      <div className="mb-4">
-                        <label className="fw-bold text-muted mb-2">Confirm New Password</label>
-                        <input type="password" placeholder="Confirm new password" className="input-premium bg-white" />
-                      </div>
-                      <button type="button" className="btn-premium py-2 px-4">
-                        <FaLock className="me-2" /> Update Password
-                      </button>
-                    </form>
-                  </motion.div>
-                )}
-
-                {activeTab === 'orders' && (
-                  <motion.div key="orders" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="text-center py-5">
-                    <div className="mb-4">
-                      <FaShoppingBag size={64} className="text-muted opacity-50" />
-                    </div>
-                    <h4 className="fw-bold text-dark mb-2">Your Orders</h4>
-                    <p className="text-muted mb-4 mx-auto" style={{ maxWidth: '300px' }}>Track, return, or buy things again. View your complete order history.</p>
-                    <Link to="/orders" className="btn-premium d-inline-block px-5 py-3">View Order History</Link>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          </motion.div>
+                        <p className="text-muted small mb-1">{addr.address}</p>
+                        <p className="text-muted small mb-1">{addr.city}, {addr.state} - {addr.postalCode}</p>
+                        <p className="text-muted small mb-2"><FaPhone size={12} className="me-1" /> {addr.phone}</p>
+                        <div className="text-end">
+                          <Button variant="outline-danger" size="sm" className="rounded-pill px-3" onClick={() => handleDeleteAddress(index)}>
+                            <FaTrash size={12} className="me-1" /> Remove
+                          </Button>
+                        </div>
+                      </Card>
+                    </Col>
+                  ))}
+                </Row>
+              )}
+            </Card>
+          )}
         </div>
       </div>
+
+      {/* Add Address Modal */}
+      <Modal show={showAddressModal} onHide={() => setShowAddressModal(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title className="fw-bold">Add New Shipping Address</Modal.Title>
+        </Modal.Header>
+        <Form onSubmit={handleAddAddress}>
+          <Modal.Body>
+            <Form.Group className="mb-3">
+              <Form.Label className="fw-semibold">Full Name *</Form.Label>
+              <Form.Control type="text" value={addressForm.name} onChange={(e) => setAddressForm({ ...addressForm, name: e.target.value })} required />
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label className="fw-semibold">Phone Number *</Form.Label>
+              <Form.Control type="text" value={addressForm.phone} onChange={(e) => setAddressForm({ ...addressForm, phone: e.target.value })} required />
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label className="fw-semibold">Street Address *</Form.Label>
+              <Form.Control type="text" value={addressForm.address} onChange={(e) => setAddressForm({ ...addressForm, address: e.target.value })} required />
+            </Form.Group>
+            <Row className="g-2 mb-3">
+              <Col md={6}>
+                <Form.Label className="fw-semibold">City *</Form.Label>
+                <Form.Control type="text" value={addressForm.city} onChange={(e) => setAddressForm({ ...addressForm, city: e.target.value })} required />
+              </Col>
+              <Col md={6}>
+                <Form.Label className="fw-semibold">State *</Form.Label>
+                <Form.Control type="text" value={addressForm.state} onChange={(e) => setAddressForm({ ...addressForm, state: e.target.value })} required />
+              </Col>
+            </Row>
+            <Row className="g-2 mb-3">
+              <Col md={6}>
+                <Form.Label className="fw-semibold">PIN / Postal Code *</Form.Label>
+                <Form.Control type="text" value={addressForm.postalCode} onChange={(e) => setAddressForm({ ...addressForm, postalCode: e.target.value })} required />
+              </Col>
+              <Col md={6}>
+                <Form.Label className="fw-semibold">Country</Form.Label>
+                <Form.Control type="text" value={addressForm.country} onChange={(e) => setAddressForm({ ...addressForm, country: e.target.value })} />
+              </Col>
+            </Row>
+            <Form.Check 
+              type="checkbox" 
+              label="Set as default shipping address" 
+              checked={addressForm.isDefault} 
+              onChange={(e) => setAddressForm({ ...addressForm, isDefault: e.target.checked })} 
+            />
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="light" onClick={() => setShowAddressModal(false)}>Cancel</Button>
+            <Button type="submit" variant="primary" disabled={addingAddress}>
+              {addingAddress ? 'Saving...' : 'Save Address'}
+            </Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
     </div>
   );
 };

@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Modal } from 'react-bootstrap';
+import { Modal, Form, Button as BSButton, Badge } from 'react-bootstrap';
 import { 
   FaShoppingBag, FaEye, FaRupeeSign, FaCalendarAlt, 
   FaTruck, FaCheckCircle, FaTimesCircle, FaClock, 
-  FaBox, FaDownload, FaFilePdf, FaTimes
+  FaBox, FaDownload, FaFilePdf, FaTimes, FaBan, FaUndo
 } from 'react-icons/fa';
 import { toast } from 'react-toastify';
 import { useNavigate, Link } from 'react-router-dom';
-import { getMyOrders, downloadInvoice } from '../../services/api';
+import { getMyOrders, downloadInvoice, cancelOrder, requestReturn } from '../../services/api';
 import Loader, { PageLoader } from '../../components/Loader';
 
 const Orders = () => {
@@ -19,6 +19,15 @@ const Orders = () => {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
   const [downloadingId, setDownloadingId] = useState(null);
+
+  // Cancel & Return states
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+
+  const [showReturnModal, setShowReturnModal] = useState(false);
+  const [returnReason, setReturnReason] = useState('');
+  const [returning, setReturning] = useState(false);
 
   useEffect(() => {
     fetchOrders();
@@ -38,6 +47,44 @@ const Orders = () => {
       setError('Failed to load orders. Please try again.');
       setLoading(false);
       toast.error('Unable to load orders');
+    }
+  };
+
+  const handleCancelOrder = async () => {
+    if (!selectedOrder) return;
+    try {
+      setCancelling(true);
+      await cancelOrder(selectedOrder._id, cancelReason);
+      toast.success('Order cancelled successfully');
+      setShowCancelModal(false);
+      setShowDetails(false);
+      setCancelReason('');
+      fetchOrders();
+    } catch (err) {
+      toast.error(err.message || 'Failed to cancel order');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  const handleRequestReturn = async () => {
+    if (!selectedOrder) return;
+    if (!returnReason.trim()) {
+      toast.warning('Please enter a reason for return');
+      return;
+    }
+    try {
+      setReturning(true);
+      await requestReturn(selectedOrder._id, returnReason);
+      toast.success('Return request submitted successfully!');
+      setShowReturnModal(false);
+      setShowDetails(false);
+      setReturnReason('');
+      fetchOrders();
+    } catch (err) {
+      toast.error(err.message || 'Failed to submit return request');
+    } finally {
+      setReturning(false);
     }
   };
 
@@ -99,18 +146,7 @@ const Orders = () => {
       setTimeout(() => { document.body.removeChild(link); window.URL.revokeObjectURL(url); }, 100);
       toast.success('✅ Invoice downloaded successfully!');
     } catch (error) {
-      if (error.message?.includes('payment is completed') || error.message?.includes('will be available')) {
-        toast.info('📄 Invoice will be available after payment is completed');
-      } else if (error.message?.includes('Access denied')) {
-        toast.error('🔒 You are not authorized to download this invoice');
-      } else if (error.message?.includes('Order not found')) {
-        toast.error('❌ Order not found');
-      } else if (error.message?.includes('login')) {
-        toast.error('🔑 Please login to download invoice');
-        navigate('/login');
-      } else {
-        toast.error(`❌ ${error.message || 'Failed to download invoice'}`);
-      }
+      toast.error(`❌ ${error.message || 'Failed to download invoice'}`);
     } finally {
       setDownloadingId(null);
     }
@@ -126,6 +162,61 @@ const Orders = () => {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(amount);
   };
 
+  const renderTrackingTimeline = (status) => {
+    if (status === 'cancelled') {
+      return (
+        <div className="alert alert-danger rounded-4 py-3 text-center my-3 fw-bold d-flex align-items-center justify-content-center gap-2">
+          <FaTimesCircle size={20} /> Order Cancelled
+        </div>
+      );
+    }
+
+    const steps = ['pending', 'processing', 'shipped', 'delivered'];
+    const currentIndex = steps.indexOf(status);
+
+    return (
+      <div className="my-4 px-2">
+        <h6 className="fw-bold text-uppercase text-muted mb-3">Order Status Tracking</h6>
+        <div className="position-relative d-flex justify-content-between align-items-center">
+          <div 
+            className="position-absolute top-50 start-0 translate-middle-y bg-primary" 
+            style={{ 
+              height: '4px', 
+              width: `${(Math.max(0, currentIndex) / (steps.length - 1)) * 100}%`,
+              transition: 'width 0.4s ease',
+              zIndex: 1
+            }} 
+          />
+          <div 
+            className="position-absolute top-50 start-0 translate-middle-y bg-light" 
+            style={{ height: '4px', width: '100%', zIndex: 0 }} 
+          />
+
+          {steps.map((step, idx) => {
+            const isCompleted = idx <= currentIndex;
+            const isCurrent = idx === currentIndex;
+
+            return (
+              <div key={step} className="text-center position-relative" style={{ zIndex: 2 }}>
+                <div 
+                  className={`rounded-circle d-flex align-items-center justify-content-center mx-auto mb-1 ${
+                    isCompleted ? 'bg-primary text-white' : 'bg-light text-muted border'
+                  }`}
+                  style={{ width: '36px', height: '36px', fontWeight: 'bold' }}
+                >
+                  {isCompleted ? <FaCheckCircle size={16} /> : idx + 1}
+                </div>
+                <small className={`fw-semibold text-capitalize ${isCurrent ? 'text-primary fw-bold' : 'text-muted'}`} style={{ fontSize: '0.75rem' }}>
+                  {step}
+                </small>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   if (loading) return <PageLoader />;
 
   return (
@@ -139,7 +230,7 @@ const Orders = () => {
           <h1 className="h2 fw-bold gradient-text d-flex align-items-center gap-3">
             <FaShoppingBag /> My Orders
           </h1>
-          <p className="text-muted mb-0">View and manage all your recent orders</p>
+          <p className="text-muted mb-0">View and track all your orders</p>
         </div>
         <div className="premium-badge badge-primary px-4 py-2 fs-5 mt-3 mt-md-0">
           {orders.length} {orders.length === 1 ? 'Order' : 'Orders'} Total
@@ -163,9 +254,9 @@ const Orders = () => {
           </div>
           <h3 className="fw-bold text-dark mb-3">No Orders Yet</h3>
           <p className="text-muted mb-4 lead mx-auto" style={{ maxWidth: '500px' }}>
-            Looks like you haven't placed any orders yet. Explore our premium collection and treat yourself today!
+            Looks like you haven't placed any orders yet. Explore our marketplace today!
           </p>
-          <Link to="/" className="btn-premium px-5 py-3 d-inline-block text-decoration-none">Start Shopping</Link>
+          <Link to="/products" className="btn-premium px-5 py-3 d-inline-block text-decoration-none">Start Shopping</Link>
         </motion.div>
       ) : (
         <motion.div 
@@ -250,15 +341,7 @@ const Orders = () => {
                                 <FaDownload size={16} />
                               )}
                             </button>
-                          ) : (
-                            <span 
-                              className="d-inline-flex align-items-center gap-1 text-muted px-2 py-1 small rounded-3 bg-light border opacity-75"
-                              title="Invoice PDF available once order is delivered"
-                            >
-                              <FaFilePdf size={12} className="text-secondary" />
-                              <small style={{ fontSize: '0.75rem' }}>Available on Delivery</small>
-                            </span>
-                          )}
+                          ) : null}
                         </div>
                       </td>
                     </motion.tr>
@@ -276,7 +359,7 @@ const Orders = () => {
           <div className="glass-card border-0 overflow-hidden" style={{ borderRadius: '20px' }}>
             <div className="d-flex justify-content-between align-items-center p-4 border-bottom bg-light">
               <h4 className="fw-bold m-0 d-flex align-items-center gap-2">
-                <FaShoppingBag className="text-primary" /> Order Details
+                <FaShoppingBag className="text-primary" /> Order #{selectedOrder._id?.slice(-8)?.toUpperCase()}
               </h4>
               <button className="btn btn-light rounded-circle p-2" onClick={() => setShowDetails(false)}>
                 <FaTimes />
@@ -284,6 +367,8 @@ const Orders = () => {
             </div>
             
             <div className="p-4" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+              {renderTrackingTimeline(selectedOrder.orderStatus)}
+
               <div className="row g-4 mb-4">
                 <div className="col-md-6">
                   <div className="p-4 bg-light rounded-4 border h-100">
@@ -316,12 +401,6 @@ const Orders = () => {
                       <span className="text-muted">Payment:</span>
                       {getPaymentBadge(selectedOrder.paymentStatus, selectedOrder.paymentMethod, selectedOrder.orderStatus)}
                     </div>
-                    {selectedOrder.deliveredAt && (
-                      <div className="d-flex justify-content-between mt-3 pt-3 border-top">
-                        <span className="text-muted">Delivered On:</span>
-                        <strong className="text-dark">{formatDate(selectedOrder.deliveredAt)}</strong>
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
@@ -345,7 +424,12 @@ const Orders = () => {
                             {item.image && (
                               <img src={item.image} alt={item.name} className="rounded" style={{ width: '48px', height: '48px', objectFit: 'cover' }} />
                             )}
-                            <span className="fw-bold">{item.name}</span>
+                            <div>
+                              <span className="fw-bold d-block">{item.name}</span>
+                              {item.seller && (
+                                <small className="text-muted">Seller: {item.seller.storeName || item.seller.name || 'Marketplace Seller'}</small>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="py-3 text-center align-middle fw-bold">{item.quantity}</td>
@@ -359,102 +443,40 @@ const Orders = () => {
                 </table>
               </div>
 
-              <div className="row g-4">
-                <div className="col-md-6">
-                  <div className="p-4 bg-light rounded-4 border h-100">
-                    <h6 className="fw-bold mb-3 text-uppercase text-muted">Shipping Address</h6>
-                    <p className="fw-bold text-dark mb-1">{selectedOrder.shippingAddress?.name}</p>
-                    <p className="text-muted mb-1">{selectedOrder.shippingAddress?.address}</p>
-                    <p className="text-muted mb-2">{selectedOrder.shippingAddress?.city}, {selectedOrder.shippingAddress?.state} - {selectedOrder.shippingAddress?.postalCode}</p>
-                    <p className="text-muted mb-3">{selectedOrder.shippingAddress?.country}</p>
-                    <div className="pt-3 border-top">
-                      <p className="mb-0 fw-bold d-flex align-items-center gap-2 text-dark">
-                        📞 {selectedOrder.shippingAddress?.phone}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="col-md-6">
-                  <div className="p-4 rounded-4 border h-100" style={{ background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)' }}>
-                    <h6 className="fw-bold mb-3 text-uppercase text-muted">Order Summary</h6>
-                    <div className="d-flex justify-content-between mb-2">
-                      <span className="text-muted">Subtotal</span>
-                      <span className="fw-bold text-dark">{formatCurrency(selectedOrder.totalAmount)}</span>
-                    </div>
-                    {selectedOrder.taxAmount > 0 && (
-                      <div className="d-flex justify-content-between mb-2">
-                        <span className="text-muted">Tax (18% GST)</span>
-                        <span className="fw-bold text-dark">{formatCurrency(selectedOrder.taxAmount)}</span>
-                      </div>
-                    )}
-                    <div className="d-flex justify-content-between mb-2">
-                      <span className="text-muted">Shipping</span>
-                      <span className={selectedOrder.shippingAmount === 0 ? "text-success fw-bold" : "fw-bold text-dark"}>
-                        {selectedOrder.shippingAmount === 0 ? 'FREE' : formatCurrency(selectedOrder.shippingAmount)}
-                      </span>
-                    </div>
-                    {selectedOrder.discountAmount > 0 && (
-                      <div className="d-flex justify-content-between mb-3 text-success">
-                        <span>Discount</span>
-                        <span className="fw-bold">-{formatCurrency(selectedOrder.discountAmount)}</span>
-                      </div>
-                    )}
-                    
-                    <hr className="my-3 opacity-25" />
-                    
-                    <div className="d-flex justify-content-between align-items-center">
-                      <strong className="fs-5 text-dark">Total Amount</strong>
-                      <strong className="fs-4 gradient-text fw-bold">
-                        {formatCurrency(
-                          (selectedOrder.totalAmount || 0) + 
-                          (selectedOrder.taxAmount || 0) + 
-                          (selectedOrder.shippingAmount || 0) - 
-                          (selectedOrder.discountAmount || 0)
-                        )}
-                      </strong>
-                    </div>
-                  </div>
-                </div>
+              <div className="d-flex flex-wrap gap-2 justify-content-end mb-4">
+                {selectedOrder.orderStatus === 'pending' && (
+                  <BSButton 
+                    variant="outline-danger" 
+                    className="rounded-pill px-4"
+                    onClick={() => setShowCancelModal(true)}
+                  >
+                    <FaBan className="me-2" /> Cancel Order
+                  </BSButton>
+                )}
+
+                {selectedOrder.orderStatus === 'delivered' && !selectedOrder.returnRequest?.requested && (
+                  <BSButton 
+                    variant="outline-warning" 
+                    className="rounded-pill px-4 text-dark"
+                    onClick={() => setShowReturnModal(true)}
+                  >
+                    <FaUndo className="me-2" /> Request Return
+                  </BSButton>
+                )}
+
+                {selectedOrder.returnRequest?.requested && (
+                  <Badge bg="info" className="p-3 rounded-3 fs-6">
+                    Return Request: {selectedOrder.returnRequest.status.toUpperCase()}
+                  </Badge>
+                )}
               </div>
-
-              {selectedOrder.adminNotes && (
-                <div className="mt-4 p-4 rounded-4 bg-primary bg-opacity-10 border border-primary border-opacity-25">
-                  <h6 className="fw-bold text-primary mb-2 text-uppercase d-flex align-items-center gap-2">
-                    📝 Admin Notes
-                  </h6>
-                  <p className="mb-0 text-dark">{selectedOrder.adminNotes}</p>
-                </div>
-              )}
-
-              {(selectedOrder.trackingNumber || selectedOrder.courierName) && (
-                <div className="mt-4 p-4 rounded-4 bg-light border">
-                  <h6 className="fw-bold mb-3 text-uppercase text-muted d-flex align-items-center gap-2">
-                    🚚 Tracking Information
-                  </h6>
-                  <div className="d-flex flex-wrap gap-4">
-                    {selectedOrder.courierName && (
-                      <div>
-                        <span className="text-muted d-block small mb-1">Courier</span>
-                        <strong className="text-dark">{selectedOrder.courierName}</strong>
-                      </div>
-                    )}
-                    {selectedOrder.trackingNumber && (
-                      <div>
-                        <span className="text-muted d-block small mb-1">Tracking Number</span>
-                        <strong className="text-dark">{selectedOrder.trackingNumber}</strong>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="p-4 border-top bg-light d-flex justify-content-end gap-3">
               <button className="btn btn-light border px-4 fw-bold text-muted" onClick={() => setShowDetails(false)}>
                 Close
               </button>
-              {canDownloadInvoice(selectedOrder) ? (
+              {canDownloadInvoice(selectedOrder) && (
                 <button 
                   className="btn-premium px-4 py-2"
                   onClick={(e) => handleDownloadInvoice(selectedOrder._id, e)}
@@ -466,18 +488,63 @@ const Orders = () => {
                     <><FaFilePdf className="me-2" /> Download Invoice</>
                   )}
                 </button>
-              ) : (
-                <button 
-                  className="btn btn-light border px-4 py-2 text-muted fw-semibold" 
-                  disabled
-                  title="Invoice PDF will be unlocked once order is delivered by admin"
-                >
-                  <FaFilePdf className="me-2 text-secondary" /> Available Once Delivered
-                </button>
               )}
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Cancel Order Modal */}
+      <Modal show={showCancelModal} onHide={() => setShowCancelModal(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title className="fw-bold text-danger">Cancel Order</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p>Are you sure you want to cancel this order?</p>
+          <Form.Group className="mb-3">
+            <Form.Label className="fw-semibold">Reason for cancellation (optional):</Form.Label>
+            <Form.Control 
+              as="textarea" 
+              rows={3} 
+              placeholder="Tell us why you are cancelling..." 
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+            />
+          </Form.Group>
+        </Modal.Body>
+        <Modal.Footer>
+          <BSButton variant="light" onClick={() => setShowCancelModal(false)}>Back</BSButton>
+          <BSButton variant="danger" onClick={handleCancelOrder} disabled={cancelling}>
+            {cancelling ? 'Cancelling...' : 'Confirm Cancellation'}
+          </BSButton>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Request Return Modal */}
+      <Modal show={showReturnModal} onHide={() => setShowReturnModal(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title className="fw-bold text-warning text-dark">Request Item Return</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p className="text-muted">Return requests can be submitted within 7 days of delivery.</p>
+          <Form.Group className="mb-3">
+            <Form.Label className="fw-semibold">Reason for Return *</Form.Label>
+            <Form.Control 
+              as="textarea" 
+              rows={3} 
+              placeholder="Damaged item, wrong size, defective product..." 
+              value={returnReason}
+              onChange={(e) => setReturnReason(e.target.value)}
+              required
+            />
+          </Form.Group>
+        </Modal.Body>
+        <Modal.Footer>
+          <BSButton variant="light" onClick={() => setShowReturnModal(false)}>Cancel</BSButton>
+          <BSButton variant="warning" onClick={handleRequestReturn} disabled={returning}>
+            {returning ? 'Submitting...' : 'Submit Return Request'}
+          </BSButton>
+        </Modal.Footer>
       </Modal>
     </div>
   );

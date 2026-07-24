@@ -7,7 +7,7 @@ import {
 } from 'react-icons/fa';
 import { toast } from 'react-toastify';
 import Loader, { PageLoader } from '../components/Loader';
-import { getProductById, createProductReview, deleteProductReview, saveCartToLocalStorage, getCartFromLocalStorage } from '../services/api';
+import { getProductById, createProductReview, deleteProductReview, saveCartToLocalStorage, getCartFromLocalStorage, toggleWishlist as apiToggleWishlist } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import ProductCard from '../components/ProductCard';
 
@@ -120,9 +120,14 @@ const ProductDetails = () => {
     navigate('/checkout');
   };
 
-  const toggleWishlist = () => {
-    setIsInWishlist(!isInWishlist);
-    toast.success(isInWishlist ? 'Removed from wishlist' : 'Added to wishlist');
+  const toggleWishlistHandler = async () => {
+    try {
+      const res = await apiToggleWishlist(product._id);
+      setIsInWishlist(res.inWishlist);
+      toast.success(res.message);
+    } catch (err) {
+      toast.error('Please login to save to wishlist');
+    }
   };
 
   if (loading) return <PageLoader />;
@@ -210,7 +215,7 @@ const ProductDetails = () => {
               </div>
               <div className="d-flex gap-2">
                 <button 
-                  onClick={toggleWishlist}
+                  onClick={toggleWishlistHandler}
                   className="btn btn-light rounded-circle shadow-sm d-flex align-items-center justify-content-center"
                   style={{ width: '45px', height: '45px', color: isInWishlist ? '#ef4444' : '#9ca3af' }}
                 >

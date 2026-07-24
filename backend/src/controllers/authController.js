@@ -193,3 +193,183 @@ module.exports = {
   getUserProfile,
   getUsers 
 };
+
+// @desc    Update user profile (name, phone, password)
+// @route   PUT /api/auth/profile
+// @access  Private
+const updateProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const { name, phone, password, currentPassword } = req.body;
+
+    if (name) user.name = name;
+    if (phone !== undefined) user.phone = phone;
+
+    // Password change
+    if (password) {
+      if (!currentPassword) {
+        return res.status(400).json({ success: false, message: 'Please provide current password to change password' });
+      }
+      const isMatch = await user.matchPassword(currentPassword);
+      if (!isMatch) {
+        return res.status(400).json({ success: false, message: 'Current password is incorrect' });
+      }
+      if (password.length < 6) {
+        return res.status(400).json({ success: false, message: 'New password must be at least 6 characters' });
+      }
+      user.password = password;
+    }
+
+    await user.save();
+
+    return res.json({
+      success: true,
+      data: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        sellerStatus: user.sellerStatus,
+        storeName: user.storeName
+      },
+      message: 'Profile updated successfully'
+    });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Server error' });
+  }
+};
+
+// @desc    Add/remove address
+// @route   POST /api/auth/addresses
+// @access  Private
+const addAddress = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const { name, phone, address, city, state, postalCode, country, isDefault } = req.body;
+    if (!name || !address || !city || !postalCode || !phone) {
+      return res.status(400).json({ success: false, message: 'Please provide all required address fields' });
+    }
+
+    if (isDefault) {
+      user.addresses.forEach(addr => { addr.isDefault = false; });
+    }
+
+    user.addresses.push({ name, phone, address, city, state, postalCode, country: country || 'India', isDefault: !!isDefault });
+    await user.save();
+
+    return res.json({ success: true, data: user.addresses, message: 'Address added successfully' });
+  } catch (error) {
+    console.error('Add address error:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Server error' });
+  }
+};
+
+// @desc    Delete address
+// @route   DELETE /api/auth/addresses/:index
+// @access  Private
+const deleteAddress = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const index = parseInt(req.params.index);
+    if (isNaN(index) || index < 0 || index >= user.addresses.length) {
+      return res.status(400).json({ success: false, message: 'Invalid address index' });
+    }
+
+    user.addresses.splice(index, 1);
+    await user.save();
+
+    return res.json({ success: true, data: user.addresses, message: 'Address removed successfully' });
+  } catch (error) {
+    console.error('Delete address error:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Server error' });
+  }
+};
+
+// @desc    Set default address
+// @route   PUT /api/auth/addresses/:index/default
+// @access  Private
+const setDefaultAddress = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const index = parseInt(req.params.index);
+    if (isNaN(index) || index < 0 || index >= user.addresses.length) {
+      return res.status(400).json({ success: false, message: 'Invalid address index' });
+    }
+
+    user.addresses.forEach((addr, i) => { addr.isDefault = (i === index); });
+    await user.save();
+
+    return res.json({ success: true, data: user.addresses, message: 'Default address updated' });
+  } catch (error) {
+    console.error('Set default address error:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Server error' });
+  }
+};
+
+// @desc    Get wishlist
+// @route   GET /api/auth/wishlist
+// @access  Private
+const getWishlist = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).populate('wishlist', 'name price image category rating numReviews isActive stock');
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const activeWishlist = (user.wishlist || []).filter(p => p && p.isActive);
+    return res.json({ success: true, data: activeWishlist, count: activeWishlist.length });
+  } catch (error) {
+    console.error('Get wishlist error:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Server error' });
+  }
+};
+
+// @desc    Toggle wishlist item (add/remove)
+// @route   POST /api/auth/wishlist/:productId
+// @access  Private
+const toggleWishlist = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const productId = req.params.productId;
+    const index = user.wishlist.findIndex(id => id.toString() === productId);
+
+    let message;
+    if (index > -1) {
+      user.wishlist.splice(index, 1);
+      message = 'Removed from wishlist';
+    } else {
+      user.wishlist.push(productId);
+      message = 'Added to wishlist';
+    }
+
+    await user.save();
+    return res.json({ success: true, data: user.wishlist, message, inWishlist: index === -1 });
+  } catch (error) {
+    console.error('Toggle wishlist error:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Server error' });
+  }
+};
+
+// Re-export everything together
+module.exports = { 
+  registerUser, 
+  loginUser, 
+  getUserProfile,
+  getUsers,
+  updateProfile,
+  addAddress,
+  deleteAddress,
+  setDefaultAddress,
+  getWishlist,
+  toggleWishlist
+};

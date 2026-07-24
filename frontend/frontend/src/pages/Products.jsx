@@ -18,13 +18,16 @@ const Products = () => {
   const [categories, setCategories] = useState([]);
   const [sortBy, setSortBy] = useState('newest');
 
+  const [maxPrice, setMaxPrice] = useState(200000);
+  const [minRating, setMinRating] = useState(0);
+
   useEffect(() => {
     fetchProducts();
   }, []);
 
   useEffect(() => {
     filterAndSortProducts();
-  }, [products, searchTerm, categoryFilter, sortBy]);
+  }, [products, searchTerm, categoryFilter, sortBy, maxPrice, minRating]);
 
   const fetchProducts = async () => {
     try {
@@ -36,6 +39,11 @@ const Products = () => {
       
       const uniqueCategories = [...new Set(productsData.map(p => p.category).filter(Boolean))];
       setCategories(uniqueCategories);
+
+      if (productsData.length > 0) {
+        const highestPrice = Math.max(...productsData.map(p => p.price || 0));
+        setMaxPrice(highestPrice || 200000);
+      }
     } catch (error) {
       setError('Failed to load products. Please try again later.');
     } finally {
@@ -58,6 +66,14 @@ const Products = () => {
       filtered = filtered.filter(product => product.category === categoryFilter);
     }
 
+    if (maxPrice > 0) {
+      filtered = filtered.filter(product => (product.price || 0) <= maxPrice);
+    }
+
+    if (minRating > 0) {
+      filtered = filtered.filter(product => (product.rating || 0) >= minRating);
+    }
+
     switch (sortBy) {
       case 'price-low': filtered.sort((a, b) => a.price - b.price); break;
       case 'price-high': filtered.sort((a, b) => b.price - a.price); break;
@@ -77,6 +93,10 @@ const Products = () => {
     setSearchTerm('');
     setCategoryFilter('all');
     setSortBy('newest');
+    setMinRating(0);
+    if (products.length > 0) {
+      setMaxPrice(Math.max(...products.map(p => p.price || 0)));
+    }
   };
 
   if (loading) {

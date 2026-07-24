@@ -106,6 +106,21 @@ const orderSchema = new mongoose.Schema({
   customerNotes: String,
   adminNotes: String,
   
+  // Cancellation
+  cancellationReason: String,
+  
+  // Return Request
+  returnRequest: {
+    requested: { type: Boolean, default: false },
+    reason: String,
+    status: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected'],
+      default: 'pending'
+    },
+    requestedAt: Date
+  },
+  
   // Invoice
   invoice: {
     invoiceNumber: String,

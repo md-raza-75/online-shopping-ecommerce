@@ -27,6 +27,7 @@ import Checkout from './pages/Checkout';
 import CheckoutSuccess from './pages/CheckoutSuccess';
 import Profile from './pages/User/Profile';
 import Orders from './pages/User/Orders';
+import Wishlist from './pages/Wishlist';
 
 // Admin Pages
 import AdminDashboard from './pages/Admin/AdminDashboard';
@@ -37,6 +38,7 @@ import AdminOrders from './pages/Admin/AdminOrders';
 import AdminCoupon from './pages/Admin/AdminCoupon';
 import AdminUsers from './pages/Admin/AdminUsers';
 import AdminSellers from './pages/Admin/AdminSellers';
+import AdminSellerAnalytics from './pages/Admin/AdminSellerAnalytics';
 
 // Seller Pages
 import SellerDashboard from './pages/Seller/SellerDashboard';
@@ -161,6 +163,11 @@ function App() {
                       <Orders />
                     </ProtectedRoute>
                   } />
+                  <Route path="/wishlist" element={
+                    <ProtectedRoute>
+                      <Wishlist />
+                    </ProtectedRoute>
+                  } />
                   
                   {/* Protected Routes - Admin */}
                   <Route path="/admin" element={
@@ -201,6 +208,11 @@ function App() {
                   <Route path="/admin/sellers" element={
                     <ProtectedRoute adminOnly>
                       <AdminSellers />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="/admin/seller-analytics" element={
+                    <ProtectedRoute adminOnly>
+                      <AdminSellerAnalytics />
                     </ProtectedRoute>
                   } />
 

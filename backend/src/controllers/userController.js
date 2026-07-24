@@ -211,3 +211,62 @@ module.exports = {
   getAdminSellers,
   updateSellerStatus
 };
+
+// @desc    Get sales analytics per seller (Admin)
+// @route   GET /api/admin/seller-analytics
+// @access  Private/Admin
+const getSellerAnalytics = async (req, res) => {
+  try {
+    const sellers = await User.find({ role: 'seller' }).select('-password');
+    const Product = require('../models/Product');
+
+    const analytics = await Promise.all(sellers.map(async (seller) => {
+      const [productCount, orders] = await Promise.all([
+        Product.countDocuments({ seller: seller._id, isActive: true }),
+        Order.find({ 'items.seller': seller._id }).lean()
+      ]);
+
+      let totalRevenue = 0;
+      let totalItemsSold = 0;
+      let totalOrders = orders.length;
+
+      orders.forEach(order => {
+        (order.items || []).forEach(item => {
+          if (item.seller && item.seller.toString() === seller._id.toString()) {
+            totalRevenue += (item.price || 0) * (item.quantity || 1);
+            totalItemsSold += (item.quantity || 1);
+          }
+        });
+      });
+
+      return {
+        _id: seller._id,
+        name: seller.name,
+        email: seller.email,
+        storeName: seller.storeName,
+        sellerStatus: seller.sellerStatus,
+        productCount,
+        totalOrders,
+        totalItemsSold,
+        totalRevenue,
+        joinedAt: seller.createdAt
+      };
+    }));
+
+    res.json({ success: true, data: analytics, count: analytics.length });
+  } catch (error) {
+    console.error('getSellerAnalytics error:', error);
+    res.status(500).json({ success: false, message: error.message || 'Server error' });
+  }
+};
+
+// Re-export everything (module.exports is overwritten below to include new function)
+module.exports = { 
+  getAdminUsers, 
+  getAdminUserById, 
+  blockUnblockUser, 
+  deleteAdminUser,
+  getAdminSellers,
+  updateSellerStatus,
+  getSellerAnalytics
+};

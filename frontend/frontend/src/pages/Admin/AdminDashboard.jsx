@@ -111,7 +111,10 @@ const AdminDashboard = () => {
           <p className="text-muted mt-1 mb-0">Overview of your store's performance</p>
         </div>
         <div className="d-flex gap-2">
-          <Link to="/admin/add-product" className="btn-premium px-4 py-2 text-decoration-none">
+          <Link to="/admin/seller-analytics" className="btn-premium px-4 py-2 text-decoration-none">
+            <FaChartLine className="me-2" /> Seller Performance
+          </Link>
+          <Link to="/admin/add-product" className="btn-premium-outline px-4 py-2 text-decoration-none">
             <FaEdit className="me-2" /> Add Product
           </Link>
           <Link to="/admin/products" className="btn-premium-outline px-4 py-2 text-decoration-none">

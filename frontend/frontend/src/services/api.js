@@ -108,6 +108,33 @@ export const getUsers = () =>
 export const updateProfile = (userData) =>
   API.put('/auth/profile', userData);
 
+// ========== ADDRESS APIs ==========
+export const addAddress = (addressData) =>
+  API.post('/auth/addresses', addressData);
+
+export const deleteAddress = (index) =>
+  API.delete(`/auth/addresses/${index}`);
+
+export const setDefaultAddress = (index) =>
+  API.put(`/auth/addresses/${index}/default`);
+
+// ========== WISHLIST APIs ==========
+export const getWishlist = () =>
+  API.get('/auth/wishlist');
+
+export const toggleWishlist = (productId) =>
+  API.post(`/auth/wishlist/${productId}`);
+
+// ========== NOTIFICATION APIs ==========
+export const getNotifications = (params = {}) =>
+  API.get('/notifications', { params });
+
+export const markNotificationAsRead = (id) =>
+  API.put(`/notifications/${id}/read`);
+
+export const markAllNotificationsAsRead = () =>
+  API.put('/notifications/read-all');
+
 // ========== PRODUCT APIs ==========
 export const getProducts = (params = {}) =>
   API.get('/products', { params });
@@ -156,6 +183,15 @@ export const updateOrderToPaid = (id, paymentId) =>
 
 export const verifyPayment = (orderId, paymentData) =>
   API.post(`/orders/${orderId}/verify-payment`, paymentData);
+
+export const cancelOrder = (orderId, reason) =>
+  API.put(`/orders/${orderId}/cancel`, { reason });
+
+export const requestReturn = (orderId, reason) =>
+  API.put(`/orders/${orderId}/return`, { reason });
+
+export const getSellerAnalytics = () =>
+  API.get('/admin/seller-analytics');
 
 // ========== ADMIN USER APIs ==========
 export const getAdminUsers = (params = {}) =>
